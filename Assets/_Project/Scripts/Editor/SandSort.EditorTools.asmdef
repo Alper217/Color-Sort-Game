@@ -1,0 +1,25 @@
+{
+    "name": "SandSort.EditorTools",
+    "rootNamespace": "SandSort.EditorTools",
+    "references": [
+        "SandSort.Core",
+        "SandSort.Data",
+        "SandSort.Simulation",
+        "SandSort.Gameplay",
+        "SandSort.UI",
+        "DOTween.Modules",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

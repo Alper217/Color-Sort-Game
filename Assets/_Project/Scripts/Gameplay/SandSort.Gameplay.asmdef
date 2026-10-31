@@ -1,0 +1,22 @@
+{
+    "name": "SandSort.Gameplay",
+    "rootNamespace": "SandSort.Gameplay",
+    "references": [
+        "SandSort.Core",
+        "SandSort.Data",
+        "SandSort.Simulation",
+        "DOTween.Modules",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
+
