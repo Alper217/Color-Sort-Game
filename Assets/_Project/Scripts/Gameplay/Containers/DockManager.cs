@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using SandSort.Core;
 using SandSort.Data;
 using SandSort.Gameplay.Grid;
@@ -68,8 +68,6 @@ namespace SandSort.Gameplay.Containers
         private Material _trackCornerMaterial;
         private Material _tunnelOpeningMaterial;
         private Material _trackSlatLightMaterial;
-        private Material _trackSlatDarkMaterial;
-        private Material _collectionZoneRailMaterial;
 
         public Transform DockRootAnchor => _dockRootAnchor != null ? _dockRootAnchor : transform;
         public int SlotCount => _slotCount;
@@ -89,8 +87,6 @@ namespace SandSort.Gameplay.Containers
             if (_trackCornerMaterial != null) Destroy(_trackCornerMaterial);
             if (_tunnelOpeningMaterial != null) Destroy(_tunnelOpeningMaterial);
             if (_trackSlatLightMaterial != null) Destroy(_trackSlatLightMaterial);
-            if (_trackSlatDarkMaterial != null) Destroy(_trackSlatDarkMaterial);
-            if (_collectionZoneRailMaterial != null) Destroy(_collectionZoneRailMaterial);
         }
 
         /// <summary>
@@ -228,17 +224,18 @@ namespace SandSort.Gameplay.Containers
             Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
             if (litShader == null) litShader = Shader.Find("Standard");
 
+            // Soft, matte, light-grey housing with a calm lavender belt surface (reference style).
             if (_trackBedMaterial == null)
             {
-                _trackBedMaterial = CreateLitMaterial(litShader, "Mat_EscalatorBed", new Color32(28, 24, 54, 255), 0.35f, 0.1f);
+                _trackBedMaterial = CreateLitMaterial(litShader, "Mat_EscalatorBelt", new Color32(150, 153, 186, 255), 0.22f, 0f);
             }
             if (_trackRailMaterial == null)
             {
-                _trackRailMaterial = CreateLitMaterial(litShader, "Mat_EscalatorGuardRail", new Color32(148, 142, 195, 255), 0.72f, 0.35f);
+                _trackRailMaterial = CreateLitMaterial(litShader, "Mat_EscalatorRail", new Color32(226, 228, 236, 255), 0.45f, 0.05f);
             }
             if (_trackCornerMaterial == null)
             {
-                _trackCornerMaterial = CreateLitMaterial(litShader, "Mat_EscalatorCornerHousing", new Color32(175, 170, 218, 255), 0.78f, 0.45f);
+                _trackCornerMaterial = CreateLitMaterial(litShader, "Mat_EscalatorCornerCap", new Color32(214, 217, 228, 255), 0.50f, 0.05f);
             }
             if (_tunnelOpeningMaterial == null)
             {
@@ -249,19 +246,9 @@ namespace SandSort.Gameplay.Containers
             }
             if (_trackSlatLightMaterial == null)
             {
-                _trackSlatLightMaterial = CreateLitMaterial(litShader, "Mat_EscalatorSlatLight", new Color32(132, 124, 184, 255), 0.68f, 0.25f);
-            }
-            if (_trackSlatDarkMaterial == null)
-            {
-                _trackSlatDarkMaterial = CreateLitMaterial(litShader, "Mat_EscalatorSlatDark", new Color32(92, 84, 142, 255), 0.55f, 0.20f);
-            }
-            if (_collectionZoneRailMaterial == null)
-            {
-                _collectionZoneRailMaterial = CreateLitMaterial(litShader, "Mat_EscalatorCollectionRail", new Color32(250, 204, 55, 255), 0.80f, 0.30f);
+                _trackSlatLightMaterial = CreateLitMaterial(litShader, "Mat_EscalatorPanelLine", new Color32(112, 116, 152, 255), 0.15f, 0f);
             }
 
-            // Place the entire 3D escalator root at the board center pivot and tilt it by _boardTiltRotation (+28 deg X)
-            // so the bottom comes close to the camera (wide/big) and the top recedes into depth (narrow/small)!
             _escalatorRootObj = new GameObject("EscalatorConveyorLoop_3D");
             _escalatorRootObj.transform.SetParent(DockRootAnchor, true);
             _escalatorRootObj.transform.position = _boardTiltPivot;
@@ -272,79 +259,71 @@ namespace SandSort.Gameplay.Containers
             float cy = (_loopBottomY + _loopTopY) * 0.5f;
             const float trackWidth = 0.36f;
             const float bedThickness = 0.16f;
-            const float railThickness = 0.055f;
-            const float railDepthZ = 0.28f;
+            const float railThickness = 0.075f;
+            const float railDepthZ = 0.20f;
             float bedZ = _loopZ + 0.12f;
-            float railZ = _loopZ + 0.02f;
+            float railZ = _loopZ - 0.02f;
 
-            // 1. Deep 3D Track Trough Beds (Flush inside the tilted 3D escalator plane)
+            // 1. Flat belt surface (4 sides)
             CreateTrackBar("Bed_Bottom", new Vector3(cx, _loopBottomY, bedZ), new Vector3(_bottomWidth + trackWidth, trackWidth, bedThickness), _trackBedMaterial);
             CreateTrackBar("Bed_Top", new Vector3(cx, _loopTopY, bedZ), new Vector3(_bottomWidth + trackWidth, trackWidth, bedThickness), _trackBedMaterial);
             CreateTrackBar("Bed_Left", new Vector3(_loopLeftX, cy, bedZ), new Vector3(trackWidth, _sideHeight - trackWidth, bedThickness), _trackBedMaterial);
             CreateTrackBar("Bed_Right", new Vector3(_loopRightX, cy, bedZ), new Vector3(trackWidth, _sideHeight - trackWidth, bedThickness), _trackBedMaterial);
 
-            // 2. 3D Protruding Outer & Inner Metallic Side Guard Rails
-            float outerHalfW = _bottomWidth + trackWidth + railThickness * 2f;
-            float outerHalfH = _sideHeight + trackWidth + railThickness * 2f;
-            float innerSpanW = Mathf.Max(0.5f, _bottomWidth - trackWidth);
-            float innerSpanH = Mathf.Max(0.5f, _sideHeight - trackWidth);
+            // 2. Solid square walls: thin outer wall + thick inner wall (fills the gap towards the tray)
+            const float outerWallT = 0.105f;
+            const float innerWallT = 0.20f;
+            float outerOff = trackWidth * 0.5f + outerWallT * 0.5f;
+            float innerOff = trackWidth * 0.5f + innerWallT * 0.5f;
+            float outerW = _bottomWidth + trackWidth + outerWallT * 2f;
+            float outerH = _sideHeight + trackWidth + outerWallT * 2f;
+            float innerW = Mathf.Max(0.5f, _bottomWidth - trackWidth);
+            float innerH = Mathf.Max(0.5f, _sideHeight - trackWidth);
 
-            // Outer Perimeter 3D Side Walls
-            CreateTrackBar("Rail_Outer_Bottom", new Vector3(cx, _loopBottomY - trackWidth * 0.5f - railThickness * 0.5f, railZ), new Vector3(outerHalfW, railThickness * 1.4f, railDepthZ), _trackRailMaterial);
-            CreateTrackBar("Rail_Outer_Top", new Vector3(cx, _loopTopY + trackWidth * 0.5f + railThickness * 0.5f, railZ), new Vector3(outerHalfW, railThickness * 1.4f, railDepthZ), _trackRailMaterial);
-            CreateTrackBar("Rail_Outer_Left", new Vector3(_loopLeftX - trackWidth * 0.5f - railThickness * 0.5f, cy, railZ), new Vector3(railThickness * 1.4f, outerHalfH, railDepthZ), _trackRailMaterial);
-            CreateTrackBar("Rail_Outer_Right", new Vector3(_loopRightX + trackWidth * 0.5f + railThickness * 0.5f, cy, railZ), new Vector3(railThickness * 1.4f, outerHalfH, railDepthZ), _trackRailMaterial);
+            CreateTrackBar("Wall_Outer_Bottom", new Vector3(cx, _loopBottomY - outerOff, railZ), new Vector3(outerW, outerWallT, railDepthZ), _trackRailMaterial);
+            CreateTrackBar("Wall_Outer_Top", new Vector3(cx, _loopTopY + outerOff, railZ), new Vector3(outerW, outerWallT, railDepthZ), _trackRailMaterial);
+            CreateTrackBar("Wall_Outer_Left", new Vector3(_loopLeftX - outerOff, cy, railZ), new Vector3(outerWallT, outerH, railDepthZ), _trackRailMaterial);
+            CreateTrackBar("Wall_Outer_Right", new Vector3(_loopRightX + outerOff, cy, railZ), new Vector3(outerWallT, outerH, railDepthZ), _trackRailMaterial);
 
-            // Inner Perimeter 3D Side Walls
-            CreateTrackBar("Rail_Inner_Bottom", new Vector3(cx, _loopBottomY + trackWidth * 0.5f + railThickness * 0.5f, railZ), new Vector3(innerSpanW, railThickness * 1.4f, railDepthZ), _trackRailMaterial);
-            CreateTrackBar("Rail_Inner_Top", new Vector3(cx, _loopTopY - trackWidth * 0.5f - railThickness * 0.5f, railZ), new Vector3(innerSpanW, railThickness * 1.4f, railDepthZ), _trackRailMaterial);
-            CreateTrackBar("Rail_Inner_Left", new Vector3(_loopLeftX + trackWidth * 0.5f + railThickness * 0.5f, cy, railZ), new Vector3(railThickness * 1.4f, innerSpanH, railDepthZ), _trackRailMaterial);
-            CreateTrackBar("Rail_Inner_Right", new Vector3(_loopRightX - trackWidth * 0.5f - railThickness * 0.5f, cy, railZ), new Vector3(railThickness * 1.4f, innerSpanH, railDepthZ), _trackRailMaterial);
+            CreateTrackBar("Wall_Inner_Bottom", new Vector3(cx, _loopBottomY + innerOff, railZ), new Vector3(innerW, innerWallT, railDepthZ), _trackRailMaterial);
+            CreateTrackBar("Wall_Inner_Top", new Vector3(cx, _loopTopY - innerOff, railZ), new Vector3(innerW, innerWallT, railDepthZ), _trackRailMaterial);
+            CreateTrackBar("Wall_Inner_Left", new Vector3(_loopLeftX + innerOff, cy, railZ), new Vector3(innerWallT, innerH, railDepthZ), _trackRailMaterial);
+            CreateTrackBar("Wall_Inner_Right", new Vector3(_loopRightX - innerOff, cy, railZ), new Vector3(innerWallT, innerH, railDepthZ), _trackRailMaterial);
 
-            // 3. 3D Corner Tunnel Hoods Placed IN FRONT of the Track & Slats (flatZ = _loopZ - 0.24f, depth = 0.44f)
-            //    with pitch-black Tunnel Mouth openings on both track-connecting sides of each corner block!
+            // 3. Square corner blocks with black tunnel entrances/exits
             float cornerTunnelZ = _loopZ - 0.24f;
-            float cornerSideSize = trackWidth + railThickness * 3.2f;
+            float cornerSideSize = trackWidth + outerWallT * 2.3f;
             Vector3 cornerBoxScale = new Vector3(cornerSideSize, cornerSideSize, 0.44f);
             CreateTrackBar("CornerSquare_BL", new Vector3(_loopLeftX, _loopBottomY, cornerTunnelZ), cornerBoxScale, _trackCornerMaterial);
             CreateTrackBar("CornerSquare_BR", new Vector3(_loopRightX, _loopBottomY, cornerTunnelZ), cornerBoxScale, _trackCornerMaterial);
             CreateTrackBar("CornerSquare_TR", new Vector3(_loopRightX, _loopTopY, cornerTunnelZ), cornerBoxScale, _trackCornerMaterial);
             CreateTrackBar("CornerSquare_TL", new Vector3(_loopLeftX, _loopTopY, cornerTunnelZ), cornerBoxScale, _trackCornerMaterial);
 
-            // Pitch-black tunnel openings on the 2 track-connecting faces of each corner block (8 tunnel portals total)
-            // Leaves a solid 3D roof lip at the top (front -Z) and solid pillars on the sides (matching guard rails)!
             float halfCorner = cornerSideSize * 0.5f;
             float mouthWidth = trackWidth - 0.02f;
             float mouthThickness = 0.045f;
-            float mouthDepthZ = 0.34f; // Spans from under the top roof lip down to the track bed
+            float mouthDepthZ = 0.34f;
             float mouthCenterZ = _loopZ - 0.14f;
+            Material mouth = _tunnelOpeningMaterial;
 
-            // Bottom-Left Corner Portals: Top (+Y) & Right (+X)
-            CreateTrackBar("TunnelMouth_BL_Top", new Vector3(_loopLeftX, _loopBottomY + halfCorner + 0.005f, mouthCenterZ), new Vector3(mouthWidth, mouthThickness, mouthDepthZ), _tunnelOpeningMaterial);
-            CreateTrackBar("TunnelMouth_BL_Right", new Vector3(_loopLeftX + halfCorner + 0.005f, _loopBottomY, mouthCenterZ), new Vector3(mouthThickness, mouthWidth, mouthDepthZ), _tunnelOpeningMaterial);
-
-            // Bottom-Right Corner Portals: Left (-X) & Top (+Y)
-            CreateTrackBar("TunnelMouth_BR_Left", new Vector3(_loopRightX - halfCorner - 0.005f, _loopBottomY, mouthCenterZ), new Vector3(mouthThickness, mouthWidth, mouthDepthZ), _tunnelOpeningMaterial);
-            CreateTrackBar("TunnelMouth_BR_Top", new Vector3(_loopRightX, _loopBottomY + halfCorner + 0.005f, mouthCenterZ), new Vector3(mouthWidth, mouthThickness, mouthDepthZ), _tunnelOpeningMaterial);
-
-            // Top-Right Corner Portals: Bottom (-Y) & Left (-X)
-            CreateTrackBar("TunnelMouth_TR_Bottom", new Vector3(_loopRightX, _loopTopY - halfCorner - 0.005f, mouthCenterZ), new Vector3(mouthWidth, mouthThickness, mouthDepthZ), _tunnelOpeningMaterial);
-            CreateTrackBar("TunnelMouth_TR_Left", new Vector3(_loopRightX - halfCorner - 0.005f, _loopTopY, mouthCenterZ), new Vector3(mouthThickness, mouthWidth, mouthDepthZ), _tunnelOpeningMaterial);
-
-            // Top-Left Corner Portals: Right (+X) & Bottom (-Y)
-            CreateTrackBar("TunnelMouth_TL_Right", new Vector3(_loopLeftX + halfCorner + 0.005f, _loopTopY, mouthCenterZ), new Vector3(mouthThickness, mouthWidth, mouthDepthZ), _tunnelOpeningMaterial);
-            CreateTrackBar("TunnelMouth_TL_Bottom", new Vector3(_loopLeftX, _loopTopY - halfCorner - 0.005f, mouthCenterZ), new Vector3(mouthWidth, mouthThickness, mouthDepthZ), _tunnelOpeningMaterial);
-
-            // 4. Create 48 3D moving escalator steps/slats around the loop (flush inside _escalatorRootObj's tilted plane!)
+            CreateTrackBar("TunnelMouth_BL_Top", new Vector3(_loopLeftX, _loopBottomY + halfCorner + 0.005f, mouthCenterZ), new Vector3(mouthWidth, mouthThickness, mouthDepthZ), mouth);
+            CreateTrackBar("TunnelMouth_BL_Right", new Vector3(_loopLeftX + halfCorner + 0.005f, _loopBottomY, mouthCenterZ), new Vector3(mouthThickness, mouthWidth, mouthDepthZ), mouth);
+            CreateTrackBar("TunnelMouth_BR_Left", new Vector3(_loopRightX - halfCorner - 0.005f, _loopBottomY, mouthCenterZ), new Vector3(mouthThickness, mouthWidth, mouthDepthZ), mouth);
+            CreateTrackBar("TunnelMouth_BR_Top", new Vector3(_loopRightX, _loopBottomY + halfCorner + 0.005f, mouthCenterZ), new Vector3(mouthWidth, mouthThickness, mouthDepthZ), mouth);
+            CreateTrackBar("TunnelMouth_TR_Bottom", new Vector3(_loopRightX, _loopTopY - halfCorner - 0.005f, mouthCenterZ), new Vector3(mouthWidth, mouthThickness, mouthDepthZ), mouth);
+            CreateTrackBar("TunnelMouth_TR_Left", new Vector3(_loopRightX - halfCorner - 0.005f, _loopTopY, mouthCenterZ), new Vector3(mouthThickness, mouthWidth, mouthDepthZ), mouth);
+            CreateTrackBar("TunnelMouth_TL_Right", new Vector3(_loopLeftX + halfCorner + 0.005f, _loopTopY, mouthCenterZ), new Vector3(mouthThickness, mouthWidth, mouthDepthZ), mouth);
+            CreateTrackBar("TunnelMouth_TL_Bottom", new Vector3(_loopLeftX, _loopTopY - halfCorner - 0.005f, mouthCenterZ), new Vector3(mouthWidth, mouthThickness, mouthDepthZ), mouth);
+            // 4. Thin panel divider lines that scroll around the loop
             for (int i = 0; i < SlatCount; i++)
             {
                 GameObject slat = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                slat.name = $"EscalatorSlat_{i:00}";
+                slat.name = $"EscalatorPanelLine_{i:00}";
                 Destroy(slat.GetComponent<Collider>());
                 slat.transform.SetParent(_escalatorRootObj.transform, false);
 
                 MeshRenderer mr = slat.GetComponent<MeshRenderer>();
-                mr.sharedMaterial = ((i & 1) == 0) ? _trackSlatLightMaterial : _trackSlatDarkMaterial;
+                mr.sharedMaterial = _trackSlatLightMaterial;
                 mr.shadowCastingMode = ShadowCastingMode.Off;
                 mr.receiveShadows = false;
 
@@ -405,7 +384,7 @@ namespace SandSort.Gameplay.Containers
 
             _slatScrollOffset = (_slatScrollOffset + _conveyorSpeed * dt) % _totalPerimeter;
             float spacing = _totalPerimeter / SlatCount;
-            float slatZ = _loopZ + 0.04f;
+            float slatZ = _loopZ + 0.035f;
 
             for (int i = 0; i < SlatCount; i++)
             {
@@ -422,8 +401,8 @@ namespace SandSort.Gameplay.Containers
 
                 bool horizontalSegment = Mathf.Abs(tangent.x) > 0.5f;
                 st.localScale = horizontalSegment
-                    ? new Vector3(0.095f, 0.28f, 0.08f)
-                    : new Vector3(0.28f, 0.095f, 0.08f);
+                    ? new Vector3(0.028f, 0.34f, 0.02f)
+                    : new Vector3(0.34f, 0.028f, 0.02f);
             }
         }
 

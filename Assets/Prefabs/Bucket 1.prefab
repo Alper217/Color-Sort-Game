@@ -98,5 +98,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: SandSort.Gameplay::SandSort.Gameplay.Containers.BucketView
   _targetBucketWorldSize: 0.54
+  _conveyorScaleMultiplier: 0.86
   _autoNormalizeWorldSize: 1
+  _cameraForwardTiltDegrees: -38
   _capacityText: {fileID: 0}
+  _mysteryLabelOffset: {x: 0, y: 0.26, z: -0.08}
+  _mysteryLabelFontSize: 2.97
+  _percentLabelOffset: {x: 0, y: 0, z: 0}
+  _percentLabelFontSize: 1.65

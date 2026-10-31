@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using DG.Tweening;
 using SandSort.Core;
@@ -30,6 +30,48 @@ namespace SandSort.Gameplay.Containers
         [SerializeField] private float _cameraForwardTiltDegrees = -38f;
         [SerializeField] private TextMeshPro _capacityText;
 
+        [Header("Label ('?' / '%') Manual Placement")]
+        [Tooltip("'?' yazısının varsayılan konumuna göre kayması (dünya biriminde: X sağ, Y yukarı, Z kameraya doğru -). Örn. Y = 0.1 yazıyı yukarı kaydırır. Play modda canlı değiştirilebilir.")]
+        [SerializeField] private Vector3 _mysteryLabelOffset = new Vector3(0f, 0.26f, -0.08f);
+        [SerializeField, Range(0.5f, 6f)] private float _mysteryLabelFontSize = 2.97f;
+        [Tooltip("Konveyördeki '%' yazısının varsayılan konumuna göre kayması.")]
+        [SerializeField] private Vector3 _percentLabelOffset = Vector3.zero;
+        [SerializeField, Range(0.5f, 6f)] private float _percentLabelFontSize = 1.65f;
+        private Vector3 _labelBaseLocalPos;
+        private bool _labelBaseCaptured;
+
+        // Live tuning: editing these values on ANY BucketView (scene instance or prefab) while playing
+        // is mirrored into these statics so every bucket updates instantly.
+        private static bool s_hasLiveLabelOverride;
+        private static Vector3 s_mysteryOffset;
+        private static float s_mysteryFontSize;
+        private static Vector3 s_percentOffset;
+        private static float s_percentFontSize;
+        private static int s_labelVersion;
+        private int _appliedLabelVersion;
+
+        private Vector3 MysteryOffset => s_hasLiveLabelOverride ? s_mysteryOffset : _mysteryLabelOffset;
+        private float MysteryFontSize => s_hasLiveLabelOverride ? s_mysteryFontSize : _mysteryLabelFontSize;
+        private Vector3 PercentOffset => s_hasLiveLabelOverride ? s_percentOffset : _percentLabelOffset;
+        private float PercentFontSize => s_hasLiveLabelOverride ? s_percentFontSize : _percentLabelFontSize;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetLiveLabelState()
+        {
+            s_hasLiveLabelOverride = false;
+            s_defaultsCaptured = false;
+            s_labelVersion = 0;
+        }
+
+        private void LateUpdate()
+        {
+            if (_appliedLabelVersion == s_labelVersion) return;
+            _appliedLabelVersion = s_labelVersion;
+            if (_capacityText == null || !_hierarchyInitialized) return;
+            float ratio = _bucketData.MaxCapacity > 0 ? Mathf.Clamp01((float)_currentCount / _bucketData.MaxCapacity) : 0f;
+            RefreshLabelAndColor(ratio);
+        }
+
         private readonly List<MeshRenderer> _meshRenderers = new List<MeshRenderer>(4);
         private Transform _transform;
         private Transform _bucketBodyTransform;
@@ -59,8 +101,44 @@ namespace SandSort.Gameplay.Containers
         public bool IsFrontSelectable => _isFrontSelectable;
         public Vector3 BaseScale => _baseScale;
 
+        private static bool s_defaultsCaptured;
+        private static Vector3 s_defMysteryOffset;
+        private static float s_defMysterySize;
+        private static Vector3 s_defPercentOffset;
+        private static float s_defPercentSize;
+
+        /// <summary>Current label tuning values (live override if set, otherwise the prefab values).</summary>
+        public static void GetLabelTuning(out Vector3 mysteryOffset, out float mysterySize, out Vector3 percentOffset, out float percentSize)
+        {
+            if (s_hasLiveLabelOverride)
+            {
+                mysteryOffset = s_mysteryOffset; mysterySize = s_mysteryFontSize;
+                percentOffset = s_percentOffset; percentSize = s_percentFontSize;
+            }
+            else
+            {
+                mysteryOffset = s_defMysteryOffset; mysterySize = s_defaultsCaptured ? s_defMysterySize : 2.25f;
+                percentOffset = s_defPercentOffset; percentSize = s_defaultsCaptured ? s_defPercentSize : 1.65f;
+            }
+        }
+
+        /// <summary>Live-applies label tuning to every bucket (used by the on-screen tuner).</summary>
+        public static void SetLabelTuning(Vector3 mysteryOffset, float mysterySize, Vector3 percentOffset, float percentSize)
+        {
+            s_hasLiveLabelOverride = true;
+            s_mysteryOffset = mysteryOffset; s_mysteryFontSize = mysterySize;
+            s_percentOffset = percentOffset; s_percentFontSize = percentSize;
+            s_labelVersion++;
+        }
+
         private void Awake()
         {
+            if (!s_defaultsCaptured)
+            {
+                s_defaultsCaptured = true;
+                s_defMysteryOffset = _mysteryLabelOffset; s_defMysterySize = _mysteryLabelFontSize;
+                s_defPercentOffset = _percentLabelOffset; s_defPercentSize = _percentLabelFontSize;
+            }
             EnsureVisualHierarchy();
         }
 
@@ -244,6 +322,8 @@ namespace SandSort.Gameplay.Containers
                 textTr.position = labelWorldPos;
                 textTr.rotation = Quaternion.identity;
                 textTr.localScale = new Vector3(invScaleX, invScaleY, invScaleZ);
+                _labelBaseLocalPos = textTr.localPosition;
+                _labelBaseCaptured = true;
 
                 _capacityText.alignment = TextAlignmentOptions.Center;
                 _capacityText.fontSize = 1.75f;
@@ -375,7 +455,8 @@ namespace SandSort.Gameplay.Containers
 
             if (_capacityText != null)
             {
-                _capacityText.fontSize = 1.65f;
+                ApplyLabelPlacement(PercentOffset);
+                _capacityText.fontSize = PercentFontSize;
                 _capacityText.SetText("{0}%", percent);
             }
 
@@ -403,12 +484,14 @@ namespace SandSort.Gameplay.Containers
                 if (_isOnConveyor)
                 {
                     int pct = Mathf.FloorToInt(fillRatio * 100f);
-                    _capacityText.fontSize = 1.65f;
+                    ApplyLabelPlacement(PercentOffset);
+                    _capacityText.fontSize = PercentFontSize;
                     _capacityText.SetText("{0}%", pct);
                 }
                 else if (_isMysteryHidden)
                 {
-                    _capacityText.fontSize = 2.25f;
+                    ApplyLabelPlacement(MysteryOffset);
+                    _capacityText.fontSize = MysteryFontSize;
                     _capacityText.SetText("?");
                 }
                 else
@@ -420,6 +503,32 @@ namespace SandSort.Gameplay.Containers
 
             ApplyColorProperties(fillRatio);
         }
+
+        private void ApplyLabelPlacement(Vector3 offset)
+        {
+            if (!_labelBaseCaptured || _capacityText == null) return;
+            // Offsets are in WORLD units (independent of the bucket's own scale) so changes are clearly visible.
+            Vector3 lossy = CachedTransform.lossyScale;
+            Vector3 localOffset = new Vector3(
+                offset.x / Mathf.Max(0.0001f, Mathf.Abs(lossy.x)),
+                offset.y / Mathf.Max(0.0001f, Mathf.Abs(lossy.y)),
+                offset.z / Mathf.Max(0.0001f, Mathf.Abs(lossy.z)));
+            _capacityText.transform.localPosition = _labelBaseLocalPos + localOffset;
+        }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            // Live-tune label offsets from the Inspector while playing: mirror values to all buckets.
+            if (!Application.isPlaying) return;
+            s_hasLiveLabelOverride = true;
+            s_mysteryOffset = _mysteryLabelOffset;
+            s_mysteryFontSize = _mysteryLabelFontSize;
+            s_percentOffset = _percentLabelOffset;
+            s_percentFontSize = _percentLabelFontSize;
+            s_labelVersion++;
+        }
+#endif
 
         private void ApplyColorProperties(float fillRatio)
         {
