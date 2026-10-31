@@ -25,18 +25,29 @@ namespace SandSort.Gameplay.Containers
         [Header("3D Bucket Visual Settings")]
         [SerializeField] private float _targetBucketWorldSize = 0.50f;
         [SerializeField] private float _conveyorScaleMultiplier = 0.86f;
-        [SerializeField] private bool _autoNormalizeWorldSize = true;
+        [SerializeField] private bool _autoNormalizeWorldSize = false;
         [Tooltip("Kovanın üst açık ağzının kameraya doğru görünmesi için Dünya X ekseninde eğim (-38 derece = iç ağzı tam görünür).")]
         [SerializeField] private float _cameraForwardTiltDegrees = -38f;
+
+        [Header("Prefab Görsel Ayarları (Elle Düzenleme)")]
+        [Tooltip("Açıksa prefab içindeki kova modeli konumu, açısı ve boyutu kod tarafından ezilmez; prefabdaki ayarlarınız korunur.")]
+        [SerializeField] private bool _respectPrefabModelTransform = true;
+        [Tooltip("Prefab içindeki TextMeshPro referansı. Elle konumlandırdığınız yazıyı bağlayabilirsiniz.")]
         [SerializeField] private TextMeshPro _capacityText;
+        [Tooltip("Açıksa prefab içinde ayarladığınız konumu, fontu, boyutu ve rengi kod bozmaz; sadece metni ('?' veya '%') günceller.")]
+        [SerializeField] private bool _respectPrefabLabelTransform = true;
+        [Tooltip("Sırada bekleyen gizemli kovanın üzerinde görünecek metin (Varsayılan: '?').")]
+        [SerializeField] private string _mysteryLabelText = "?";
+
+        [Header("Ray Pozisyonu (Sadece Raydayken Uygulanır)")]
+        [SerializeField] private Vector3 _railBodyLocalPos = new Vector3(0f, 0.00104f, 0.00348f);
+        [SerializeField] private Vector3 _railBodyLocalRot = new Vector3(-123.314f, 0f, 0f);
 
         private readonly List<MeshRenderer> _meshRenderers = new List<MeshRenderer>(4);
         private Transform _transform;
         private Transform _bucketBodyTransform;
         private Vector3 _queueBodyLocalPos = Vector3.zero;
         private Quaternion _queueBodyLocalRot = Quaternion.Euler(-90f, 0f, 0f);
-        private static readonly Vector3 RailBodyLocalPos = new Vector3(0f, 0.00104f, 0.00348f);
-        private static readonly Quaternion RailBodyLocalRot = Quaternion.Euler(-123.314f, 0f, 0f);
         private BoxCollider _boxCollider;
         private Vector3 _baseScale;
         private bool _hierarchyInitialized;
@@ -159,35 +170,35 @@ namespace SandSort.Gameplay.Containers
                 }
             }
 
-            // 3a. Tilt the unified ModelPivot (Bucket body + Handle locked together as one rigid piece!)
-            modelPivot.localPosition = Vector3.zero;
-            modelPivot.localRotation = Quaternion.Euler(_cameraForwardTiltDegrees, 0f, 0f);
-
-            // 3b. Normalize scale to target world size
-            Bounds worldBounds = CalculateCombinedMeshWorldBounds();
-            if (_autoNormalizeWorldSize && worldBounds.size.sqrMagnitude > 0.00001f)
+            // 3. ModelPivot transforms: if _respectPrefabModelTransform is true, keep user's manual prefab setup!
+            if (!_respectPrefabModelTransform)
             {
-                float maxDim = Mathf.Max(worldBounds.size.x, Mathf.Max(worldBounds.size.y, worldBounds.size.z));
-                if (maxDim > 0.0001f)
+                modelPivot.localPosition = Vector3.zero;
+                modelPivot.localRotation = Quaternion.Euler(_cameraForwardTiltDegrees, 0f, 0f);
+
+                Bounds worldBounds = CalculateCombinedMeshWorldBounds();
+                if (_autoNormalizeWorldSize && worldBounds.size.sqrMagnitude > 0.00001f)
                 {
-                    float scaleFactor = _targetBucketWorldSize / maxDim;
-                    _transform.localScale *= scaleFactor;
-                    worldBounds = CalculateCombinedMeshWorldBounds();
+                    float maxDim = Mathf.Max(worldBounds.size.x, Mathf.Max(worldBounds.size.y, worldBounds.size.z));
+                    if (maxDim > 0.0001f)
+                    {
+                        float scaleFactor = _targetBucketWorldSize / maxDim;
+                        _transform.localScale *= scaleFactor;
+                        worldBounds = CalculateCombinedMeshWorldBounds();
+                    }
+                }
+
+                if (worldBounds.size.sqrMagnitude > 0.00001f)
+                {
+                    Vector3 localCenterOffset = _transform.InverseTransformPoint(worldBounds.center);
+                    modelPivot.localPosition -= localCenterOffset;
                 }
             }
 
             _baseScale = _transform.localScale;
             if (_baseScale.sqrMagnitude < 0.0001f)
             {
-                _baseScale = Vector3.one * 0.5f;
-            }
-
-            // 3c. Center the rigid ModelPivot in local space so worldBounds.center == _transform.position
-            if (worldBounds.size.sqrMagnitude > 0.00001f)
-            {
-                Vector3 localCenterOffset = _transform.InverseTransformPoint(worldBounds.center);
-                modelPivot.localPosition -= localCenterOffset;
-                worldBounds = CalculateCombinedMeshWorldBounds();
+                _baseScale = Vector3.one;
             }
 
             _transform.rotation = savedRootRot;
@@ -216,7 +227,11 @@ namespace SandSort.Gameplay.Containers
                     Mathf.Max(0.45f, worldBounds.size.z * 1.15f) * invScaleZ);
             }
 
-            // 5. Create or position the Label ("?" in mystery queue, "0%..100%" on conveyor) centered on the front face
+            // 5. Locate or position the Label ("?" in mystery queue, "0%..100%" on conveyor)
+            if (_capacityText == null)
+            {
+                _capacityText = GetComponentInChildren<TextMeshPro>(true);
+            }
             if (_capacityText == null)
             {
                 Transform existingText = _transform.Find("CapacityLabel");
@@ -232,13 +247,14 @@ namespace SandSort.Gameplay.Containers
                 }
             }
 
-            if (_capacityText != null)
+            // Only override label position and font styling if _respectPrefabLabelTransform is false!
+            // When true, you can freely position, scale, font-size, and style the label in the Prefab!
+            if (_capacityText != null && !_respectPrefabLabelTransform)
             {
                 Transform textTr = _capacityText.transform;
                 float frontZ = worldBounds.size.sqrMagnitude > 0.00001f
                     ? (worldBounds.min.z - 0.06f)
                     : (_transform.position.z - 0.30f);
-                // Position the percentage label on the lower-front body below the open circular rim (exact match to screenshot!)
                 Vector3 labelWorldPos = new Vector3(_transform.position.x, _transform.position.y - 0.13f, frontZ);
 
                 textTr.position = labelWorldPos;
@@ -375,7 +391,10 @@ namespace SandSort.Gameplay.Containers
 
             if (_capacityText != null)
             {
-                _capacityText.fontSize = 1.65f;
+                if (!_respectPrefabLabelTransform)
+                {
+                    _capacityText.fontSize = 1.65f;
+                }
                 _capacityText.SetText("{0}%", percent);
             }
 
@@ -388,8 +407,8 @@ namespace SandSort.Gameplay.Containers
             {
                 if (_isOnConveyor)
                 {
-                    _bucketBodyTransform.localPosition = RailBodyLocalPos;
-                    _bucketBodyTransform.localRotation = RailBodyLocalRot;
+                    _bucketBodyTransform.localPosition = _railBodyLocalPos;
+                    _bucketBodyTransform.localRotation = Quaternion.Euler(_railBodyLocalRot);
                 }
                 else
                 {
@@ -403,13 +422,13 @@ namespace SandSort.Gameplay.Containers
                 if (_isOnConveyor)
                 {
                     int pct = Mathf.FloorToInt(fillRatio * 100f);
-                    _capacityText.fontSize = 1.65f;
+                    if (!_respectPrefabLabelTransform) _capacityText.fontSize = 1.65f;
                     _capacityText.SetText("{0}%", pct);
                 }
                 else if (_isMysteryHidden)
                 {
-                    _capacityText.fontSize = 2.25f;
-                    _capacityText.SetText("?");
+                    if (!_respectPrefabLabelTransform) _capacityText.fontSize = 2.25f;
+                    _capacityText.SetText(_mysteryLabelText);
                 }
                 else
                 {
@@ -509,5 +528,18 @@ namespace SandSort.Gameplay.Containers
         {
             KillActiveTweens();
         }
+
+#if UNITY_EDITOR
+        [ContextMenu("Prefab Üzerinde Yazıyı (CapacityLabel) Görünür Yap / Hizala")]
+        private void EditorAlignCapacityLabel()
+        {
+            EnsureVisualHierarchy();
+            if (_capacityText != null)
+            {
+                _capacityText.text = _mysteryLabelText;
+                UnityEditor.EditorUtility.SetDirty(gameObject);
+            }
+        }
+#endif
     }
 }
