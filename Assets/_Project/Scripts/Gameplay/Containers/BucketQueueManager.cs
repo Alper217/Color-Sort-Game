@@ -19,10 +19,13 @@ namespace SandSort.Gameplay.Containers
         [SerializeField] private GameObject _bucketPrefab;
         [SerializeField] private Camera _gameplayCamera;
 
-        [Header("Queue Layout Settings")]
-        [SerializeField] private float _columnHorizontalSpacing = 0.98f;
-        [SerializeField] private float _rowVerticalSpacing = 0.52f;
-        [SerializeField] private int _maxVisibleRowsPerColumn = 5;
+        [Header("Queue Layout & Mystery ('?') Progression Settings")]
+        [SerializeField] private float _columnHorizontalSpacing = 1.15f;
+        [SerializeField] private float _rowVerticalSpacing = 0.58f;
+        [Tooltip("Her sütunda ekranda aynı anda kaç satır kova görüneceği (Örn: 3 satır).")]
+        [SerializeField, Range(2, 5)] private int _maxVisibleRowsPerColumn = 3;
+        [Tooltip("Kaçıncı satırdan itibaren kovaların üstü simsiyah ve '?' (Gizemli Kova) olarak geleceği (1 = İlk satır açık, arkadaki tüm satırlar '?').")]
+        [SerializeField, Range(1, 5)] private int _mysteryBucketStartRow = 1;
 
         private ObjectPool<BucketView> _bucketPool;
 
@@ -105,7 +108,8 @@ namespace SandSort.Gameplay.Containers
 
             _simulator = simulator;
             _dockManager = dockManager;
-            _columnCount = levelData.Columns != null ? levelData.Columns.Length : 0;
+            _columnCount = simulator.ColumnCount;
+            _maxVisibleRowsPerColumn = 3;
 
             if (_columnViews.Length < _columnCount)
             {
@@ -136,7 +140,8 @@ namespace SandSort.Gameplay.Containers
                     vt.rotation = Quaternion.identity;
 
                     bool isFront = (b == 0);
-                    view.Setup(bucketData, levelData.GetColor(bucketData.ColorId), c, isFront);
+                    bool isMystery = (b >= _mysteryBucketStartRow);
+                    view.Setup(bucketData, levelData.GetColor(bucketData.ColorId), c, isFront, isMystery);
                     view.gameObject.SetActive(b < _maxVisibleRowsPerColumn);
                     _columnViews[c][b] = view;
                 }
@@ -226,8 +231,9 @@ namespace SandSort.Gameplay.Containers
 
                 int visualOrderFromFront = b - newHead;
                 bool isVisible = visualOrderFromFront < _maxVisibleRowsPerColumn;
+                bool isMystery = visualOrderFromFront >= _mysteryBucketStartRow;
                 remainingView.gameObject.SetActive(isVisible);
-                remainingView.SetQueueState(columnIndex, visualOrderFromFront == 0);
+                remainingView.SetQueueState(columnIndex, visualOrderFromFront == 0, isMystery);
 
                 Vector3 targetPos = GetQueueSlotWorldPosition(columnIndex, visualOrderFromFront);
                 remainingView.AnimateQueueShift(targetPos);
@@ -241,23 +247,22 @@ namespace SandSort.Gameplay.Containers
 
         public Vector3 GetQueueSlotWorldPosition(int columnIndex, int depthFromTop)
         {
-            if (_fixedColumnRoots != null &&
-                columnIndex >= 0 &&
-                columnIndex < _fixedColumnRoots.Length &&
-                _fixedColumnRoots[columnIndex] != null)
+            float baseY = QueuesRootAnchor.position.y;
+            float baseZ = QueuesRootAnchor.position.z;
+            if (_fixedColumnRoots != null && _fixedColumnRoots.Length > 0 && _fixedColumnRoots[0] != null)
             {
-                return _fixedColumnRoots[columnIndex].position + new Vector3(0f, -depthFromTop * _rowVerticalSpacing, 0f);
+                baseY = _fixedColumnRoots[0].position.y;
+                baseZ = _fixedColumnRoots[0].position.z;
             }
 
-            float totalWidth = (_columnCount - 1) * _columnHorizontalSpacing;
-            float startX = -totalWidth * 0.5f;
+            float spacingX = _columnCount <= 2 ? 1.22f : (_columnCount == 3 ? 1.05f : _columnHorizontalSpacing);
+            float totalWidth = (_columnCount - 1) * spacingX;
+            float startX = QueuesRootAnchor.position.x - totalWidth * 0.5f;
 
-            Vector3 localOffset = new Vector3(
-                startX + columnIndex * _columnHorizontalSpacing,
-                -depthFromTop * _rowVerticalSpacing,
-                0f);
-
-            return QueuesRootAnchor.TransformPoint(localOffset);
+            return new Vector3(
+                startX + columnIndex * spacingX,
+                baseY - depthFromTop * _rowVerticalSpacing,
+                baseZ);
         }
 
         public void ClearAllQueueVisuals()

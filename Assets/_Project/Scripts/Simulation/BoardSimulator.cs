@@ -182,12 +182,130 @@ namespace SandSort.Simulation
                 }
             }
 
+            // Enforce 50-100 grain capacity per bucket (and progressively more buckets on higher levels!)
+            int targetMaxPerBucket = levelData.LevelIndex <= 1 ? 100 : (levelData.LevelIndex == 2 ? 80 : 65);
+            int targetChunkSize = levelData.LevelIndex <= 1 ? 85 : (levelData.LevelIndex == 2 ? 70 : 55);
+            SubdivideOversizedBuckets(targetMaxPerBucket, targetChunkSize);
+
+            // Level Progression Column Count:
+            // Levels 1..10 -> 2 Columns
+            // Levels 11..20 -> 3 Columns
+            // Levels 21+ -> 4 Columns
+            int targetColumnCount = levelData.LevelIndex <= 10 ? 2 : (levelData.LevelIndex <= 20 ? 3 : 4);
+            if (_columnCount != targetColumnCount && _columnCount > 0)
+            {
+                RedistributeIntoTargetColumns(targetColumnCount);
+            }
+
             for (int s = 0; s < _dockCapacity; s++)
             {
                 _dockSlots[s].Clear();
             }
 
             ComputeExposedFrontier();
+        }
+
+        private void RedistributeIntoTargetColumns(int targetColCount)
+        {
+            targetColCount = Math.Clamp(targetColCount, 1, 6);
+            int totalBuckets = 0;
+            int maxLen = 0;
+            for (int c = 0; c < _columnCount; c++)
+            {
+                totalBuckets += _columnLengths[c];
+                if (_columnLengths[c] > maxLen) maxLen = _columnLengths[c];
+            }
+
+            if (totalBuckets == 0) return;
+
+            BucketData[][] newCols = new BucketData[targetColCount][];
+            int[] newLens = new int[targetColCount];
+            for (int tc = 0; tc < targetColCount; tc++)
+            {
+                newCols[tc] = new BucketData[(totalBuckets / targetColCount) + 4];
+            }
+
+            // Interleave row-by-row across the source columns so front-of-queue solvability order is preserved!
+            int assignCounter = 0;
+            for (int row = 0; row < maxLen; row++)
+            {
+                for (int srcCol = 0; srcCol < _columnCount; srcCol++)
+                {
+                    if (row < _columnLengths[srcCol])
+                    {
+                        int dstCol = assignCounter % targetColCount;
+                        int writeIdx = newLens[dstCol];
+                        if (writeIdx >= newCols[dstCol].Length)
+                        {
+                            Array.Resize(ref newCols[dstCol], newCols[dstCol].Length * 2);
+                        }
+                        newCols[dstCol][writeIdx] = _columns[srcCol][row];
+                        newLens[dstCol] = writeIdx + 1;
+                        assignCounter++;
+                    }
+                }
+            }
+
+            _columnCount = targetColCount;
+            EnsureCapacity(_width, _height, _dockCapacity, _columnCount);
+            for (int tc = 0; tc < targetColCount; tc++)
+            {
+                _columns[tc] = newCols[tc];
+                _columnHeads[tc] = 0;
+                _columnLengths[tc] = newLens[tc];
+            }
+        }
+
+        private void SubdivideOversizedBuckets(int maxAllowedPerBucket, int preferredChunkSize)
+        {
+            for (int c = 0; c < _columnCount; c++)
+            {
+                int currentLen = _columnLengths[c];
+                if (currentLen <= 0) continue;
+
+                // Count how many buckets we will have after splitting any bucket > maxAllowedPerBucket
+                int newCount = 0;
+                for (int b = 0; b < currentLen; b++)
+                {
+                    int cap = _columns[c][b].MaxCapacity;
+                    if (cap > maxAllowedPerBucket)
+                    {
+                        int parts = Math.Max(2, (int)Math.Ceiling((double)cap / preferredChunkSize));
+                        newCount += parts;
+                    }
+                    else
+                    {
+                        newCount++;
+                    }
+                }
+
+                if (newCount == currentLen) continue;
+
+                BucketData[] expanded = new BucketData[newCount];
+                int writeIdx = 0;
+                for (int b = 0; b < currentLen; b++)
+                {
+                    BucketData bd = _columns[c][b];
+                    if (bd.MaxCapacity > maxAllowedPerBucket)
+                    {
+                        int parts = Math.Max(2, (int)Math.Ceiling((double)bd.MaxCapacity / preferredChunkSize));
+                        int baseCap = bd.MaxCapacity / parts;
+                        int rem = bd.MaxCapacity % parts;
+                        for (int p = 0; p < parts; p++)
+                        {
+                            int partCap = baseCap + (p < rem ? 1 : 0);
+                            expanded[writeIdx++] = new BucketData(bd.ColorId, partCap);
+                        }
+                    }
+                    else
+                    {
+                        expanded[writeIdx++] = bd;
+                    }
+                }
+
+                _columns[c] = expanded;
+                _columnLengths[c] = writeIdx;
+            }
         }
 
         private void EnsureCapacity(int width, int height, int dockCap, int colCount)
@@ -317,6 +435,13 @@ namespace SandSort.Simulation
             return true;
         }
 
+        public void SetSlotConveyorState(int slotIndex, bool isInCollectionZone, float normalizedBottomX)
+        {
+            if (slotIndex < 0 || slotIndex >= _dockCapacity) return;
+            _dockSlots[slotIndex].IsInCollectionZone = isInCollectionZone;
+            _dockSlots[slotIndex].NormalizedBottomX = Math.Clamp(normalizedBottomX, 0f, 1f);
+        }
+
         public void ComputeExposedFrontier()
         {
             _exposedCount = 0;
@@ -335,7 +460,7 @@ namespace SandSort.Simulation
             Array.Clear(_columnCompactionCounts, 0, _width);
             ComputeExposedFrontier();
 
-            if (_exposedCount == 0) return 0;
+            if (_exposedCount == 0 || _width <= 0) return 0;
 
             if (_slotReservationsThisPass.Length < _dockCapacity)
             {
@@ -343,51 +468,53 @@ namespace SandSort.Simulation
             }
             Array.Clear(_slotReservationsThisPass, 0, _dockCapacity);
 
-            int startCol = (_width > 0) ? (_scanColumnCursor % _width) : 0;
-
-            for (int i = 0; i < _width; i++)
+            // For each active bucket currently on the Bottom Conveyor Segment (IsInCollectionZone == true),
+            // scan outward from the bucket's current horizontal X position along the bottom row (y = 0)
+            for (int s = 0; s < _dockCapacity; s++)
             {
-                int x = (startCol + i) % _width;
-                if (_columnHeights[x] <= 0) continue;
+                if (!_dockSlots[s].CanRequestMore || !_dockSlots[s].IsInCollectionZone)
+                    continue;
 
-                int colorId = _grid[x];
-                if (colorId < 0) continue;
+                int targetColor = _dockSlots[s].ColorId;
+                int centerCol = Math.Clamp((int)Math.Round(_dockSlots[s].NormalizedBottomX * (_width - 1)), 0, _width - 1);
 
-                int matchedSlot = -1;
-                for (int s = 0; s < _dockCapacity; s++)
+                for (int offset = 0; offset < _width; offset++)
                 {
-                    if (_dockSlots[s].CanRequestMore
-                        && _dockSlots[s].ColorId == colorId
-                        && _slotReservationsThisPass[s] < maxReservationsPerSlot)
-                    {
-                        matchedSlot = s;
+                    if (!_dockSlots[s].CanRequestMore || _slotReservationsThisPass[s] >= maxReservationsPerSlot)
                         break;
-                    }
-                }
 
-                if (matchedSlot >= 0)
-                {
-                    _slotReservationsThisPass[matchedSlot]++;
-                    _remainingGridGrains--;
-                    _dockSlots[matchedSlot].InFlightCount++;
-                    _totalInFlightGrains++;
-
-                    _reservationBuffer[_reservationCount++] = new GrainReservationRecord(
-                        x, x, 0, colorId, matchedSlot);
-
-                    int colH = _columnHeights[x];
-                    for (int y = 0; y < colH - 1; y++)
+                    // Check centerCol + offset and centerCol - offset
+                    for (int dir = 0; dir < 2; dir++)
                     {
-                        _grid[y * _width + x] = _grid[(y + 1) * _width + x];
+                        if (offset == 0 && dir == 1) break;
+                        int x = (dir == 0) ? (centerCol + offset) : (centerCol - offset);
+                        if (x < 0 || x >= _width) continue;
+
+                        if (_columnHeights[x] <= 0 || _grid[x] != targetColor)
+                            continue;
+
+                        _slotReservationsThisPass[s]++;
+                        _remainingGridGrains--;
+                        _dockSlots[s].InFlightCount++;
+                        _totalInFlightGrains++;
+
+                        _reservationBuffer[_reservationCount++] = new GrainReservationRecord(
+                            x, x, 0, targetColor, s);
+
+                        int colH = _columnHeights[x];
+                        for (int y = 0; y < colH - 1; y++)
+                        {
+                            _grid[y * _width + x] = _grid[(y + 1) * _width + x];
+                        }
+                        _grid[(colH - 1) * _width + x] = VacatedInteriorCell;
+                        _columnHeights[x] = colH - 1;
+                        _columnCompactionCounts[x]++;
+
+                        if (!_dockSlots[s].CanRequestMore || _slotReservationsThisPass[s] >= maxReservationsPerSlot)
+                            break;
                     }
-                    _grid[(colH - 1) * _width + x] = VacatedInteriorCell;
-                    _columnHeights[x] = colH - 1;
-                    _columnCompactionCounts[x]++;
                 }
             }
-
-            // Advance the sweeping cursor by a prime step so extraction sweeps smoothly across the whole bottom row
-            _scanColumnCursor = (_scanColumnCursor + 17) % Math.Max(1, _width);
 
             if (_reservationCount > 0)
             {

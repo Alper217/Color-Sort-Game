@@ -13,6 +13,8 @@ namespace SandSort.Simulation
         public int MaxCapacity;
         public int CurrentCount;
         public int InFlightCount;
+        public bool IsInCollectionZone;
+        public float NormalizedBottomX;
 
         public int ReservedTotal => CurrentCount + InFlightCount;
         public int RemainingNeeded => IsOccupied ? (MaxCapacity - (CurrentCount + InFlightCount)) : 0;
@@ -27,6 +29,8 @@ namespace SandSort.Simulation
             MaxCapacity = bucket.MaxCapacity;
             CurrentCount = 0;
             InFlightCount = 0;
+            IsInCollectionZone = true;
+            NormalizedBottomX = 0.5f;
         }
 
         public void Clear()
@@ -36,6 +40,8 @@ namespace SandSort.Simulation
             MaxCapacity = 0;
             CurrentCount = 0;
             InFlightCount = 0;
+            IsInCollectionZone = false;
+            NormalizedBottomX = 0.5f;
         }
     }
 

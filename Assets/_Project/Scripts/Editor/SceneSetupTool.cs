@@ -24,15 +24,58 @@ namespace SandSort.EditorTools
     /// </summary>
     public static class SceneSetupTool
     {
+        [InitializeOnLoadMethod]
+        private static void AutoWireCustomBucketPrefabOnLoad()
+        {
+            EditorApplication.delayCall += () =>
+            {
+                if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+                GameObject bucketPrefab = LoadBucketPrefab();
+                if (bucketPrefab == null) return;
+
+                if (bucketPrefab.GetComponent<BucketView>() == null)
+                {
+                    bucketPrefab.AddComponent<BucketView>();
+                    EditorUtility.SetDirty(bucketPrefab);
+                    AssetDatabase.SaveAssets();
+                }
+
+                BucketQueueManager queueMgr = UnityEngine.Object.FindFirstObjectByType<BucketQueueManager>();
+                if (queueMgr != null)
+                {
+                    SerializedObject soQueue = new SerializedObject(queueMgr);
+                    SerializedProperty prop = soQueue.FindProperty("_bucketPrefab");
+                    if (prop != null && prop.objectReferenceValue != bucketPrefab)
+                    {
+                        prop.objectReferenceValue = bucketPrefab;
+                        soQueue.ApplyModifiedPropertiesWithoutUndo();
+                        EditorUtility.SetDirty(queueMgr);
+                        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                    }
+                }
+            };
+        }
+
+        private static GameObject LoadBucketPrefab()
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Bucket 1.prefab");
+            if (prefab == null)
+            {
+                prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Bucket.prefab");
+            }
+            return prefab;
+        }
+
         [MenuItem("SandSort/Setup Playable Test Scene (Auto-Wire Prefabs)", priority = 1)]
         public static void SetupPlayableScene()
         {
             // 1. Regenerate 3 showcase levels (28x28 = 784 grains, 100% full tray with background sand color & Cellular Automata)
             List<LevelDataSO> levels = LevelGenerationEngine.GenerateShowcasePortfolioLevels();
 
-            // 2. Load User Greybox Prefabs from Assets/Prefabs/
+            // 2. Load User Prefabs from Assets/Prefabs/
             GameObject grainPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/SandGrain.prefab");
-            GameObject bucketPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Bucket.prefab");
+            GameObject bucketPrefab = LoadBucketPrefab();
             GameObject dockSlotPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/DockSlot.prefab");
             GameObject boardFramePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/GridBoardFrame.prefab");
 

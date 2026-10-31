@@ -202,6 +202,8 @@ namespace SandSort.Gameplay.Transfer
                 }
                 else
                 {
+                    // Dynamically track the moving bucket on the Escalator/Conveyor loop!
+                    flight.P2 = _dockManager.GetSlotIntakeWorldPosition(flight.DockSlotIndex);
                     float easedT = t * t * (3f - 2f * t);
                     Vector3 pos = EvaluateQuadraticBezier(in flight.P0, in flight.P1, in flight.P2, easedT);
 

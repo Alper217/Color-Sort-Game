@@ -17,7 +17,7 @@ namespace SandSort.Gameplay.Grid
     public sealed class GridManager : MonoBehaviour
     {
         private const int MaxBatchSize = 1023;
-        private const int ShadesPerColor = 3;
+        private const int ShadesPerColor = 5;
 
         [Header("Scene References (Move/Scale Tray Manually in Scene!)")]
         [SerializeField] private Transform _gridRootAnchor;
@@ -32,8 +32,10 @@ namespace SandSort.Gameplay.Grid
         [Tooltip("Kum taneciklerinin birbirine kaynaşıp hiç boşluk bırakmaması için ölçek çarpanı.")]
         [SerializeField, Range(1.10f, 1.85f)] private float _grainScaleMultiplier = 1.56f;
 
-        [Header("Board Layout & Sandbox Feel")]
+        [Header("Board Layout & 3D Tabletop Tilt")]
         [SerializeField] private bool _autoFitToTrayBounds = true;
+        [Tooltip("Kum tepsisinin ve yürüyen bandın 3 boyutlu perspektif eğim açısı (Yakında büyük, uzakta küçük görünmesi için).")]
+        [SerializeField, Range(0f, 40f)] private float _tabletopTiltAngle = 28f;
         [SerializeField] private float _boardWorldWidth = 3.20f;
         [SerializeField] private float _boardWorldHeight = 3.20f;
         [SerializeField] private float _gravityAcceleration = 15.0f;
@@ -43,7 +45,7 @@ namespace SandSort.Gameplay.Grid
         private Mesh _grainMesh;
         private Material _baseGrainMaterial;
 
-        // 3 micro-shade instanced materials per palette color for natural sandy texture without 3D ball rims
+        // 5 micro-shade instanced materials per palette color for natural sandy texture without 3D ball rims
         private Material[] _shadedInstancedMaterials = Array.Empty<Material>();
         private Matrix4x4[][][] _shadeMatrixBatches = Array.Empty<Matrix4x4[][]>();
         private int[] _shadeInstanceCounts = Array.Empty<int>();
@@ -64,11 +66,28 @@ namespace SandSort.Gameplay.Grid
         private Vector3 _bottomLeftWorldOrigin;
         private Vector3 _cellVisualScale;
 
+        // 3D Tabletop Tilt State (Shared with DockManager so Tray, Sand & Escalator Loop align 100%)
+        private bool _hasCapturedBaseFrameTransform;
+        private Vector3 _baseFrameLocalPos;
+        private Quaternion _baseFrameLocalRot = Quaternion.Euler(-90f, 0f, 0f);
+        private Vector3 _unrotatedBoardCenter = new Vector3(0f, 1.95f, 0.35f);
+        private Bounds _unrotatedOuterBounds = new Bounds(new Vector3(0f, 1.95f, 0.35f), new Vector3(3.05f, 3.05f, 0.2f));
+        private Quaternion _boardTiltRotation = Quaternion.identity;
+
         public Transform GridRootAnchor => _gridRootAnchor != null ? _gridRootAnchor : transform;
         public int SandResolutionPerAxis => _sandResolutionPerAxis;
         public int TotalSimulatedGrains => _sandResolutionPerAxis * _sandResolutionPerAxis;
         public Vector3 GrainWorldScale => _cellVisualScale;
         public Mesh GrainMesh => _grainMesh;
+        public float TabletopTiltAngle => _tabletopTiltAngle;
+        public Vector3 UnrotatedBoardCenter => _unrotatedBoardCenter;
+        public Bounds UnrotatedOuterBounds => _unrotatedOuterBounds;
+        public Quaternion BoardTiltRotation => _boardTiltRotation;
+
+        public Vector3 TransformFlatBoardPointToWorld(Vector3 flatWorldPoint)
+        {
+            return _unrotatedBoardCenter + _boardTiltRotation * (flatWorldPoint - _unrotatedBoardCenter);
+        }
 
         private void Awake()
         {
@@ -120,7 +139,8 @@ namespace SandSort.Gameplay.Grid
             _shadeInstanceCounts = new int[totalShadeBuckets];
             _shadeMatrixBatches = new Matrix4x4[totalShadeBuckets][][];
 
-            float[] shadeMultipliers = { 0.94f, 1.00f, 1.06f };
+            // 5 micro-shades (deep shadow grain -> pure -> bright sparkling crystal highlight) for realistic 3D kinetic sand!
+            float[] shadeMultipliers = { 0.80f, 0.90f, 1.00f, 1.10f, 1.24f };
 
             for (int c = 0; c < _paletteColorCount; c++)
             {
@@ -137,11 +157,9 @@ namespace SandSort.Gameplay.Grid
                     mat.enableInstancing = true;
 
                     float mult = shadeMultipliers[s];
-                    Color shadedCol = new Color(
-                        Mathf.Clamp01(baseCol.r * mult),
-                        Mathf.Clamp01(baseCol.g * mult),
-                        Mathf.Clamp01(baseCol.b * mult),
-                        1f);
+                    Color shadedCol = mult <= 1.0f
+                        ? new Color(baseCol.r * mult, baseCol.g * mult, baseCol.b * mult, 1f)
+                        : Color.Lerp(baseCol, Color.white, (mult - 1.0f) * 0.85f);
 
                     if (mat.HasProperty(GameConstants.BaseColorShaderId))
                         mat.SetColor(GameConstants.BaseColorShaderId, shadedCol);
@@ -162,7 +180,7 @@ namespace SandSort.Gameplay.Grid
 
         public Material GetInstancedMaterialForColor(int colorId)
         {
-            int shadeBucket = colorId * ShadesPerColor + 1; // Middle pure shade
+            int shadeBucket = colorId * ShadesPerColor + 2; // Middle pure shade
             if (_shadedInstancedMaterials != null && shadeBucket >= 0 && shadeBucket < _shadedInstancedMaterials.Length)
             {
                 return _shadedInstancedMaterials[shadeBucket];
@@ -214,20 +232,35 @@ namespace SandSort.Gameplay.Grid
 
         /// <summary>
         /// Reads the exact world inner faces of the 4 child walls of the manually placed tray (_boardFrameVisual)
-        /// so the sand matrix always fits 100% inside the tray walls wherever the user places or scales it!
+        /// in its un-tilted state, and then applies the 3D tabletop perspective tilt (_tabletopTiltAngle)
+        /// so the tray, sand matrix, and escalator loop share the exact same 3D perspective plane!
         /// </summary>
         public void CalculateExactTrayCavityLayout()
         {
             Vector3 centerWorld = GridRootAnchor.position;
+            _boardTiltRotation = Quaternion.Euler(_tabletopTiltAngle, 0f, 0f);
 
             if (_autoFitToTrayBounds && _boardFrameVisual != null)
             {
+                if (!_hasCapturedBaseFrameTransform)
+                {
+                    _baseFrameLocalPos = _boardFrameVisual.localPosition;
+                    _baseFrameLocalRot = Quaternion.Euler(-90f, 0f, 0f);
+                    _hasCapturedBaseFrameTransform = true;
+                }
+
+                // Temporarily reset tray to flat (-90 deg X) so axis-aligned renderer.bounds are 100% exact
+                _boardFrameVisual.localPosition = _baseFrameLocalPos;
+                _boardFrameVisual.localRotation = _baseFrameLocalRot;
+
                 MeshRenderer[] renderers = _boardFrameVisual.GetComponentsInChildren<MeshRenderer>();
                 MeshRenderer baseRenderer = _boardFrameVisual.GetComponent<MeshRenderer>();
 
                 if (baseRenderer != null)
                 {
                     Bounds outerBounds = baseRenderer.bounds;
+                    _unrotatedOuterBounds = outerBounds;
+                    _unrotatedBoardCenter = outerBounds.center;
                     Vector3 frameCenter = outerBounds.center;
 
                     float innerMinX = outerBounds.min.x;
@@ -272,6 +305,14 @@ namespace SandSort.Gameplay.Grid
                         (innerMinY + innerMaxY) * 0.5f,
                         cavityZ);
                 }
+
+                // Now tilt the physical 3D tray around _unrotatedBoardCenter by _boardTiltRotation
+                if (Application.isPlaying && Mathf.Abs(_tabletopTiltAngle) > 0.01f)
+                {
+                    Vector3 offsetFromCenter = _boardFrameVisual.position - _unrotatedBoardCenter;
+                    _boardFrameVisual.position = _unrotatedBoardCenter + _boardTiltRotation * offsetFromCenter;
+                    _boardFrameVisual.rotation = _boardTiltRotation * _boardFrameVisual.rotation;
+                }
             }
 
             int w = _width > 0 ? _width : _sandResolutionPerAxis;
@@ -300,21 +341,25 @@ namespace SandSort.Gameplay.Grid
 
         public Vector3 GridToWorldPosition(int x, int y)
         {
-            return new Vector3(
+            Vector3 flatPos = new Vector3(
                 _bottomLeftWorldOrigin.x + x * _cellSizeX,
                 _bottomLeftWorldOrigin.y + y * _cellSizeY,
                 _bottomLeftWorldOrigin.z);
+            return TransformFlatBoardPointToWorld(flatPos);
         }
 
         public Vector3ConsumeResult ConsumeReservedGrainVisual(int gridIndex, int x, int y)
         {
-            Vector3 worldPos = GridToWorldPosition(x, y);
+            Vector3 flatPos = new Vector3(
+                _bottomLeftWorldOrigin.x + x * _cellSizeX,
+                _bottomLeftWorldOrigin.y + y * _cellSizeY,
+                _bottomLeftWorldOrigin.z);
             if (x >= 0 && x < _width)
             {
-                worldPos.y += _columnVisualOffsetY[x];
+                flatPos.y += _columnVisualOffsetY[x];
                 _columnVisualOffsetY[x] = Mathf.Min(_columnVisualOffsetY[x] + _cellSizeY, _cellSizeY * 4.5f);
             }
-            return new Vector3ConsumeResult(worldPos);
+            return new Vector3ConsumeResult(TransformFlatBoardPointToWorld(flatPos));
         }
 
         public void ApplyVisualGravityMoves(BoardSimulator simulator, float stepDuration)
@@ -338,9 +383,6 @@ namespace SandSort.Gameplay.Grid
         private void Update()
         {
             if (_simulator == null || _currentLevel == null || _grainMesh == null) return;
-
-            // Keep tray fit live in case the user drags or scales the tray at runtime!
-            CalculateExactTrayCavityLayout();
 
             float dt = Time.deltaTime;
             IntegrateSmoothSandboxOffsets(dt);
@@ -398,7 +440,7 @@ namespace SandSort.Gameplay.Grid
 
             ReadOnlySpan<int> grid = _simulator.Grid;
             ReadOnlySpan<int> colHeights = _simulator.ColumnHeights;
-            Quaternion identityRot = Quaternion.identity;
+            Quaternion grainRot = _boardTiltRotation;
 
             float minAllowedX = _bottomLeftWorldOrigin.x;
             float maxAllowedX = _bottomLeftWorldOrigin.x + (_width - 1) * _cellSizeX;
@@ -432,7 +474,8 @@ namespace SandSort.Gameplay.Grid
                         minAllowedY,
                         maxAllowedY);
 
-                    Vector3 worldPos = new Vector3(posX, posY, _bottomLeftWorldOrigin.z);
+                    Vector3 flatPos = new Vector3(posX, posY, _bottomLeftWorldOrigin.z);
+                    Vector3 worldPos = _unrotatedBoardCenter + grainRot * (flatPos - _unrotatedBoardCenter);
 
                     int bucketIdx = colorId * ShadesPerColor + shadeOffset;
                     int countForBucket = _shadeInstanceCounts[bucketIdx];
@@ -442,7 +485,7 @@ namespace SandSort.Gameplay.Grid
                     if (batchIdx < _shadeMatrixBatches[bucketIdx].Length)
                     {
                         _shadeMatrixBatches[bucketIdx][batchIdx][indexInBatch] =
-                            Matrix4x4.TRS(worldPos, identityRot, _cellVisualScale);
+                            Matrix4x4.TRS(worldPos, grainRot, _cellVisualScale);
                         _shadeInstanceCounts[bucketIdx] = countForBucket + 1;
                     }
                 }

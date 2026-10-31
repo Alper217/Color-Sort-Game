@@ -124,6 +124,7 @@ namespace SandSort.Gameplay
 
             _gridManager.BuildVisualGrid(_activeLevel, _simulator);
             _dockManager.InitializeDock(_activeLevel.ActiveDockCapacity, _bucketQueueManager.ReturnBucketToPool);
+            _dockManager.BindSimulator(_simulator);
             _bucketQueueManager.BuildQueues(_activeLevel, _simulator, _dockManager);
             _transferController.BindSession(_simulator, _dockManager, _gridManager.GrainWorldScale);
             SyncTransferSpeedSettings();

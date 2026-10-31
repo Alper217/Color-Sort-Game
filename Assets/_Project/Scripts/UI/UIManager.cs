@@ -83,7 +83,8 @@ namespace SandSort.UI
 
         private void UpdateOverallProgressBar(float ratio01)
         {
-            int pct = Mathf.FloorToInt(ratio01 * 100f);
+            float clamped = Mathf.Clamp01(ratio01);
+            int pct = Mathf.FloorToInt(clamped * 100f);
             if (_progressPercentText != null)
             {
                 _progressPercentText.SetText("{0}%", pct);
@@ -91,7 +92,22 @@ namespace SandSort.UI
 
             if (_progressFillBar != null)
             {
-                _progressFillBar.fillAmount = ratio01;
+                // If the Image has a Sprite and is set to Filled, update fillAmount
+                if (_progressFillBar.sprite != null && _progressFillBar.type == Image.Type.Filled)
+                {
+                    _progressFillBar.fillAmount = clamped;
+                }
+
+                // Also drive RectTransform horizontal anchors (0 -> clamped) so the light-blue bar
+                // smoothly grows from left to right even when Sprite is null or Image.Type is Simple/Sliced!
+                RectTransform rt = _progressFillBar.rectTransform;
+                if (rt != null)
+                {
+                    rt.anchorMin = new Vector2(0f, 0f);
+                    rt.anchorMax = new Vector2(clamped, 1f);
+                    rt.offsetMin = Vector2.zero;
+                    rt.offsetMax = Vector2.zero;
+                }
             }
         }
 

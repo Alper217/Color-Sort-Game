@@ -452,9 +452,9 @@ namespace SandSort.EditorTools
 
             (PixelArtPreset preset, string title, int width, int height, GravityMode gravity, float scramble, int minCap, int maxCap, int bgId)[] specs =
             {
-                (PixelArtPreset.PixelHeart,  "Pixel Heart",  60, 60, GravityMode.CellularAutomata, 0.25f, 180, 260, 1),
-                (PixelArtPreset.RoyalCrown,  "Royal Crown",  60, 60, GravityMode.CellularAutomata, 0.35f, 180, 260, 4),
-                (PixelArtPreset.MagicPotion, "Magic Potion", 60, 60, GravityMode.CellularAutomata, 0.40f, 180, 260, 3)
+                (PixelArtPreset.PixelHeart,  "Pixel Heart",  48, 48, GravityMode.CellularAutomata, 0.25f, 80, 100, 1),
+                (PixelArtPreset.RoyalCrown,  "Royal Crown",  48, 48, GravityMode.CellularAutomata, 0.35f, 65, 85,  4),
+                (PixelArtPreset.MagicPotion, "Magic Potion", 48, 48, GravityMode.CellularAutomata, 0.42f, 50, 70,  3)
             };
 
             List<LevelDataSO> createdLevels = new List<LevelDataSO>(specs.Length);
