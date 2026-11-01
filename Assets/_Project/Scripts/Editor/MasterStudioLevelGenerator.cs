@@ -93,10 +93,10 @@ namespace SandSort.EditorTools
             Debug.Log("<color=#00e5ff><b>[MasterStudioLevelGenerator]</b> All 8 Studio Levels rebuilt and synced successfully!</color>");
         }
 
-        [MenuItem("SandSort/Rebuild Levels 5, 7, 8, 9 (Fix Broken Color Logic)", priority = 2)]
-        public static void MenuRebuildLevels5_7_8_9()
+        [MenuItem("SandSort/Build Levels 4 to 10 (Strict Solvability & Pure Colors)", priority = 1)]
+        public static void BuildLevels4To10()
         {
-            RebuildSpecificStudioLevels(5, 7, 8, 9);
+            RebuildSpecificStudioLevels(4, 5, 6, 7, 8, 9, 10);
         }
 
         public static void RebuildSpecificStudioLevels(params int[] levelIndices)
@@ -403,165 +403,146 @@ namespace SandSort.EditorTools
                 // LEVEL 4: "Parlayan Şans Yıldızı" (Lucky Arcade Star) - 32x32 (1,024 kum tanesi)
                 // Retro arcade sevimli gözlü yıldız, sıcak turuncu gölge, parıldayan yıldız tozu.
                 // =========================================================================
+                // =========================================================================
+                // LEVEL 4: "Sihirli Büyü İksiri" (Magic Potion Flask) - 34x34
+                // =========================================================================
                 new StudioLevelBlueprint
                 {
                     Index = 4,
-                    Title = "Parlayan Şans Yıldızı",
-                    Width = 32,
-                    Height = 32,
-                    Palette = new Color32[]
-                    {
-                        new Color32(255, 192, 72, 255),  // 0: Işıltılı Yıldız Sarısı
-                        new Color32(255, 127, 80, 255),  // 1: Sıcak Mercan Turuncu Kenar
-                        new Color32(47, 53, 66, 255),    // 2: Sevimli Çizgi Film Gözleri
-                        new Color32(255, 255, 255, 255), // 3: Saf Beyaz Parıltı
-                        new Color32(30, 39, 46, 255)     // 4: Gece Yarısı Laciverti Gökyüzü
-                    },
-                    BackgroundColorId = 4,
-                    DockCapacity = 5,
-                    ColumnCount = 3,
-                    MinBucketCapacity = 50,
-                    MaxBucketCapacity = 100,
-                    ScrambleFactor = 0.04f,
-                    MysteryStartRow = 3,
-                    SandFillSpeedMultiplier = 3.0f,
-                    PixelEvaluator = (x, y, w, h) =>
-                    {
-                        float cx = w / 2.0f;
-                        float cy = h / 2.0f;
-                        float rOuter = 15.2f;
-                        float rInner = 6.8f;
-
-                        float dx = x - cx;
-                        float dy = y - cy;
-                        float dist = Mathf.Sqrt(dx * dx + dy * dy);
-                        float angle = Mathf.Atan2(dy, dx) + Mathf.PI / 2.0f;
-                        if (angle < 0f) angle += 2.0f * Mathf.PI;
-
-                        float sector = (angle % (2.0f * Mathf.PI / 5.0f)) / (2.0f * Mathf.PI / 5.0f);
-                        if (sector > 0.5f) sector = 1.0f - sector;
-                        float maxR = rInner + (rOuter - rInner) * Mathf.Pow(1.0f - sector * 2.0f, 1.15f);
-
-                        if (dist <= maxR)
-                        {
-                            bool isEyeL = (Mathf.Abs(dx - (-3.5f)) <= 1.2f && Mathf.Abs(dy - (-1.2f)) <= 2.6f);
-                            bool isEyeR = (Mathf.Abs(dx - 3.5f) <= 1.2f && Mathf.Abs(dy - (-1.2f)) <= 2.6f);
-
-                            if (isEyeL || isEyeR)
-                            {
-                                if (dy > -1.0f && Mathf.Abs(dx - (isEyeL ? -3.5f : 3.5f)) < 0.7f)
-                                    return 3; // White eye glint
-                                return 2; // Dark eye
-                            }
-
-                            // Cute smile mouth
-                            if (dy >= -4.5f && dy <= -3.5f && Mathf.Abs(dx) <= 2.5f)
-                                return 2;
-
-                            if (dist > maxR - 2.5f && (dy < -0.5f || dx > 1.5f))
-                                return 1; // Orange rim
-                            if (dx < -2f && dy > 2f)
-                                return 3; // White highlight
-                            return 0; // Star Yellow
-                        }
-
-                        // Stardust sparkles
-                        if ((Mathf.Abs(x - 5) <= 1 && y == 27) || (x == 5 && Mathf.Abs(y - 27) <= 1) ||
-                            (Mathf.Abs(x - 27) <= 1 && y == 26) || (x == 27 && Mathf.Abs(y - 26) <= 1) ||
-                            (Mathf.Abs(x - 6) <= 1 && y == 6) || (x == 6 && Mathf.Abs(y - 6) <= 1) ||
-                            (Mathf.Abs(x - 26) <= 1 && y == 7) || (x == 26 && Mathf.Abs(y - 7) <= 1))
-                            return 3;
-
-                        return 4; // Midnight Sky
-                    }
-                },
-
-                // =========================================================================
-                // LEVEL 5: "Sihirli Büyü İksiri" (Magic Potion Flask) - 36x36 (1,296 kum tanesi)
-                // Ametist mor iksir, neon pembe dalgalar, yükselen camgöbeği sihir kabarcıkları.
-                // =========================================================================
-                new StudioLevelBlueprint
-                {
-                    Index = 5,
                     Title = "Sihirli Büyü İksiri",
-                    Width = 36,
-                    Height = 36,
+                    Width = 34,
+                    Height = 34,
                     Palette = new Color32[]
                     {
                         new Color32(156, 136, 255, 255), // 0: Ametist Büyü Moru
                         new Color32(224, 86, 253, 255),  // 1: Neon Pembe İksir Yüzeyi
                         new Color32(0, 210, 211, 255),   // 2: Sihirli Camgöbeği Baloncuklar
-                        new Color32(225, 177, 44, 255),  // 3: Meşe Mantar Tıpa & Altın Kurdele
+                        new Color32(225, 177, 44, 255),  // 3: Meşe Mantar Tıpa & Kurdele
                         new Color32(255, 255, 255, 255), // 4: Kristal Cam Yansımaları
-                        new Color32(25, 42, 86, 255)     // 5: Simyacı Laboratuvarı Laciverti
+                        new Color32(25, 42, 86, 255)     // 5: Simyacı Laciverti Fon
                     },
                     BackgroundColorId = 5,
                     DockCapacity = 5,
                     ColumnCount = 3,
-                    MinBucketCapacity = 55,
-                    MaxBucketCapacity = 105,
-                    ScrambleFactor = 0.08f,
-                    MysteryStartRow = 2,
+                    MinBucketCapacity = 50,
+                    MaxBucketCapacity = 95,
+                    ScrambleFactor = 0.05f,
+                    MysteryStartRow = 3,
                     SandFillSpeedMultiplier = 2.8f,
                     PixelEvaluator = (x, y, w, h) =>
                     {
                         float cx = w / 2.0f;
-                        float bulbCy = 15.0f;
-                        float bulbR = 13.8f;
+                        float bulbCy = 14.0f;
+                        float bulbR = 13.0f;
 
                         float dx = x - cx;
                         float dy = y - bulbCy;
                         float distBulb = Mathf.Sqrt(dx * dx + dy * dy);
 
-                        // Cork
-                        if (y >= 28 && y <= 34 && Mathf.Abs(dx) <= 4.5f)
-                            return 3; // Oak Cork
-                        // Neck
-                        if (y >= 23 && y <= 27 && Mathf.Abs(dx) <= 4.0f)
+                        if (y >= 26 && y <= 32 && Mathf.Abs(dx) <= 4.2f) return 3;
+                        if (y >= 21 && y <= 25 && Mathf.Abs(dx) <= 3.8f)
                         {
-                            if (y == 23 && Mathf.Abs(dx) <= 5.2f) return 3; // Ribbon
-                            if (Mathf.Abs(dx) >= 3.0f) return 4; // Glass
-                            return 1; // Liquid splash
+                            if (y == 21 && Mathf.Abs(dx) <= 4.8f) return 3;
+                            if (Mathf.Abs(dx) >= 2.8f) return 4;
+                            return 1;
                         }
-                        // Bulb
                         if (distBulb <= bulbR)
                         {
-                            if (distBulb >= bulbR - 1.6f)
+                            if (distBulb >= bulbR - 1.5f)
                             {
-                                if (dx < -4f && dy > 0f) return 4; // Glint
-                                return 0; // Glass wall
+                                if (dx < -3.5f && dy > 0f) return 4;
+                                return 0;
                             }
 
-                            float liquidSurface = 19.5f + Mathf.Sin(dx * 0.35f) * 1.5f;
+                            float liquidSurface = 18.0f + Mathf.Sin(dx * 0.38f) * 1.4f;
                             if (y > liquidSurface)
                             {
-                                if (dx < -3f && dy > 3f) return 4;
-                                return 5; // Air
+                                if (dx < -2.5f && dy > 2.5f) return 4;
+                                return 5;
                             }
 
-                            if (y >= liquidSurface - 2.2f)
-                                return 1; // Pink Wave
+                            if (y >= liquidSurface - 2.0f) return 1;
 
-                            // Cyan magic bubbles
-                            if ((Mathf.Abs(dx - (-4f)) <= 1.8f && Mathf.Abs(dy - (-3f)) <= 1.8f) ||
-                                (Mathf.Abs(dx - 5f) <= 1.6f && Mathf.Abs(dy - (-1f)) <= 1.6f) ||
-                                (Mathf.Abs(dx - 1f) <= 2.0f && Mathf.Abs(dy - (-7f)) <= 2.0f))
+                            if ((Mathf.Abs(dx - (-3.5f)) <= 1.6f && Mathf.Abs(dy - (-2.5f)) <= 1.6f) ||
+                                (Mathf.Abs(dx - 4.5f) <= 1.5f && Mathf.Abs(dy - (-1f)) <= 1.5f) ||
+                                (Mathf.Abs(dx - 1f) <= 1.8f && Mathf.Abs(dy - (-6.5f)) <= 1.8f))
                                 return 2;
 
-                            // Pink bubble
-                            if ((Mathf.Abs(dx - 3f) <= 1.4f && Mathf.Abs(dy - 2f) <= 1.4f) ||
-                                (Mathf.Abs(dx - (-6f)) <= 1.2f && Mathf.Abs(dy - (-7f)) <= 1.2f))
-                                return 1;
-
-                            return 0; // Purple Elixir
+                            return 0;
                         }
-                        return 5; // Background
+                        return 5;
                     }
                 },
 
                 // =========================================================================
-                // LEVEL 6: "Sevimli Dondurma Külahı" (Swirl Ice Cream) - 38x38 (1,444 kum tanesi)
-                // Çilekli & antep fıstıklı yumuşak dondurma burgusu, çıtır altın külah, parlak vişne.
+                // LEVEL 5: "Retro El Konsolu" (Retro Game Boy) - 36x36
+                // =========================================================================
+                new StudioLevelBlueprint
+                {
+                    Index = 5,
+                    Title = "Retro El Konsolu",
+                    Width = 36,
+                    Height = 36,
+                    Palette = new Color32[]
+                    {
+                        new Color32(29, 209, 161, 255),  // 0: Nane Turkuaz Konsol Gövdesi
+                        new Color32(163, 203, 56, 255),  // 1: Klasik Nokta Vuruşlu Zeytin LCD
+                        new Color32(31, 40, 60, 255),    // 2: Ekran Çerçevesi & 8-Bit Gülen Yüz
+                        new Color32(255, 71, 87, 255),   // 3: Şeker Kırmızı Aksiyon Tuşları
+                        new Color32(87, 101, 116, 255),  // 4: D-Pad Yön Tuşu Gri
+                        new Color32(245, 246, 250, 255)  // 5: Temiz Stüdyo Beyazı Arka Plan
+                    },
+                    BackgroundColorId = 5,
+                    DockCapacity = 5,
+                    ColumnCount = 4,
+                    MinBucketCapacity = 55,
+                    MaxBucketCapacity = 100,
+                    ScrambleFactor = 0.05f,
+                    MysteryStartRow = 2,
+                    SandFillSpeedMultiplier = 2.6f,
+                    PixelEvaluator = (x, y, w, h) =>
+                    {
+                        float cx = w / 2.0f;
+                        float dx = x - cx;
+
+                        if (Mathf.Abs(dx) <= 13.0f && y >= 3 && y <= 33)
+                        {
+                            bool cornerCut = (Mathf.Abs(dx) > 11.5f && (y < 5 || y > 31));
+                            if (!cornerCut)
+                            {
+                                if (y >= 18 && y <= 30 && Mathf.Abs(dx) <= 10.5f)
+                                {
+                                    if (y >= 20 && y <= 28 && Mathf.Abs(dx) <= 8.5f)
+                                    {
+                                        if (y == 25 && (Mathf.Abs(dx - (-3.5f)) <= 0.8f || Mathf.Abs(dx - 3.5f) <= 0.8f))
+                                            return 2;
+                                        if (y == 22 && Mathf.Abs(dx) <= 3.5f && Mathf.Abs(dx) >= 1f)
+                                            return 2;
+                                        return 1;
+                                    }
+                                    return 2;
+                                }
+
+                                float dpadDx = x - (cx - 6.5f);
+                                float dpadDy = y - 10.5f;
+                                if ((Mathf.Abs(dpadDx) <= 1.4f && Mathf.Abs(dpadDy) <= 4.2f) ||
+                                    (Mathf.Abs(dpadDy) <= 1.4f && Mathf.Abs(dpadDx) <= 4.2f))
+                                    return 4;
+
+                                float btnA = Mathf.Sqrt((x - (cx + 8.5f)) * (x - (cx + 8.5f)) + (y - 12.0f) * (y - 12.0f));
+                                float btnB = Mathf.Sqrt((x - (cx + 5.0f)) * (x - (cx + 5.0f)) + (y - 9.5f) * (y - 9.5f));
+                                if (btnA <= 1.9f || btnB <= 1.9f)
+                                    return 3;
+
+                                return 0;
+                            }
+                        }
+                        return 5;
+                    }
+                },
+
+                // =========================================================================
+                // LEVEL 6: "Sevimli Dondurma Külahı" (Swirl Ice Cream) - 38x38
                 // =========================================================================
                 new StudioLevelBlueprint
                 {
@@ -583,7 +564,7 @@ namespace SandSort.EditorTools
                     ColumnCount = 4,
                     MinBucketCapacity = 60,
                     MaxBucketCapacity = 110,
-                    ScrambleFactor = 0.04f,
+                    ScrambleFactor = 0.06f,
                     MysteryStartRow = 2,
                     SandFillSpeedMultiplier = 2.4f,
                     CustomSeed = 200,
@@ -592,135 +573,51 @@ namespace SandSort.EditorTools
                         float cx = w / 2.0f;
                         float dx = x - cx;
 
-                        // 1. Waffle Cone
                         if (y >= 3 && y <= 18)
                         {
                             float maxW = (y - 3) * 0.85f + 1.2f;
                             if (Mathf.Abs(dx) <= maxW)
                             {
                                 if (((x + y) % 4 == 0 || (x - y) % 4 == 0) && Mathf.Abs(dx) < maxW - 0.7f)
-                                    return 4; // Grid shadow
-                                return 2; // Waffle Gold
+                                    return 4;
+                                return 2;
                             }
                         }
-                        // 2. Mint Scoop
                         else if (y > 18 && y <= 26)
                         {
                             float mintW = 13.5f - Mathf.Abs(y - 22) * 0.5f;
                             if (Mathf.Abs(dx) <= mintW)
-                                return 1; // Mint
+                                return 1;
                         }
-                        // 3. Strawberry Swirl
                         else if (y > 26 && y <= 33)
                         {
                             float berryW = 11.0f - (y - 26) * 1.1f;
                             float swirlOffset = Mathf.Sin((y - 26) * 0.7f) * 2.0f;
                             if (Mathf.Abs(dx - swirlOffset) <= berryW)
-                                return 0; // Strawberry
+                                return 0;
                         }
-                        // 4. Cherry on top
                         else if (y > 33 && y <= 37)
                         {
                             float cherryDist = Mathf.Sqrt(dx * dx + (y - 35.0f) * (y - 35.0f));
-                            if (cherryDist <= 3.2f) return 3; // Cherry Red
-                            if (Mathf.Abs(dx - 1.0f) <= 0.8f && y >= 36) return 4; // Stem
+                            if (cherryDist <= 3.2f) return 3;
+                            if (Mathf.Abs(dx - 1.0f) <= 0.8f && y >= 36) return 4;
                         }
-                        return 5; // Sky Blue
+                        return 5;
                     }
                 },
 
                 // =========================================================================
-                // LEVEL 7: "Retro El Konsolu" (Retro Game Boy) - 40x40 (1,600 kum tanesi)
-                // Nostaljik nane yeşili gövde, LCD nokta vuruşlu ekran, 8-bit gülen yüz, kırmızı tuşlar.
+                // LEVEL 7: "Görkemli Işıltılı Elmas" (Prismatic Diamond) - 40x40
                 // =========================================================================
                 new StudioLevelBlueprint
                 {
                     Index = 7,
-                    Title = "Retro El Konsolu",
+                    Title = "Görkemli Işıltılı Elmas",
                     Width = 40,
                     Height = 40,
                     Palette = new Color32[]
                     {
-                        new Color32(29, 209, 161, 255),  // 0: Nane Turkuaz Konsol Gövdesi
-                        new Color32(163, 203, 56, 255),  // 1: Klasik Nokta Vuruşlu Zeytin LCD
-                        new Color32(31, 40, 60, 255),    // 2: Ekran Çerçevesi & 8-Bit Gülen Yüz
-                        new Color32(255, 71, 87, 255),   // 3: Şeker Kırmızı Aksiyon Tuşları
-                        new Color32(87, 101, 116, 255),  // 4: D-Pad Yön Tuşu Gri
-                        new Color32(245, 246, 250, 255)  // 5: Temiz Stüdyo Beyazı Arka Plan
-                    },
-                    BackgroundColorId = 5,
-                    DockCapacity = 5,
-                    ColumnCount = 4,
-                    MinBucketCapacity = 65,
-                    MaxBucketCapacity = 120,
-                    ScrambleFactor = 0.04f,
-                    MysteryStartRow = 1,
-                    SandFillSpeedMultiplier = 2.4f,
-                    PixelEvaluator = (x, y, w, h) =>
-                    {
-                        float cx = w / 2.0f;
-                        float dx = x - cx;
-
-                        if (Mathf.Abs(dx) <= 14.5f && y >= 3 && y <= 37)
-                        {
-                            bool cornerCut = (Mathf.Abs(dx) > 13.0f && (y < 5 || y > 35));
-                            if (!cornerCut)
-                            {
-                                // Screen Bezel
-                                if (y >= 20 && y <= 34 && Mathf.Abs(dx) <= 12.0f)
-                                {
-                                    // LCD Screen
-                                    if (y >= 22 && y <= 32 && Mathf.Abs(dx) <= 9.5f)
-                                    {
-                                        // 8-bit smiley
-                                        if (y == 28 && (Mathf.Abs(dx - (-4f)) <= 0.8f || Mathf.Abs(dx - 4f) <= 0.8f))
-                                            return 2; // Eyes
-                                        if (y == 25 && Mathf.Abs(dx) <= 4f && Mathf.Abs(dx) >= 1f)
-                                            return 2; // Mouth
-                                        if (y == 26 && (Mathf.Abs(dx - (-4f)) <= 0.8f || Mathf.Abs(dx - 4f) <= 0.8f))
-                                            return 2; // Cheeks
-                                        return 1; // LCD Screen
-                                    }
-                                    return 2; // Dark Bezel
-                                }
-
-                                // D-Pad
-                                float dpadDx = x - (cx - 7.5f);
-                                float dpadDy = y - 11.5f;
-                                if ((Mathf.Abs(dpadDx) <= 1.6f && Mathf.Abs(dpadDy) <= 4.8f) ||
-                                    (Mathf.Abs(dpadDy) <= 1.6f && Mathf.Abs(dpadDx) <= 4.8f))
-                                    return 4; // D-Pad
-
-                                // Action Buttons
-                                float btnA = Mathf.Sqrt((x - (cx + 9.5f)) * (x - (cx + 9.5f)) + (y - 13.5f) * (y - 13.5f));
-                                float btnB = Mathf.Sqrt((x - (cx + 5.5f)) * (x - (cx + 5.5f)) + (y - 10.5f) * (y - 10.5f));
-                                if (btnA <= 2.2f || btnB <= 2.2f)
-                                    return 3; // Red Button
-
-                                // Speaker grill
-                                if (y >= 5 && y <= 8 && (x - y) % 3 == 0 && dx >= 5 && dx <= 12)
-                                    return 4;
-
-                                return 0; // Mint Body
-                            }
-                        }
-                        return 5; // White Background
-                    }
-                },
-
-                // =========================================================================
-                // LEVEL 8: "Görkemli Işıltılı Elmas" (Prismatic Diamond) - 42x42 (1,764 kum tanesi)
-                // Prizmatik kesim elmas, parıldayan fasetler, kadife obsidiyen gece yarısı fonu.
-                // =========================================================================
-                new StudioLevelBlueprint
-                {
-                    Index = 8,
-                    Title = "Görkemli Işıltılı Elmas",
-                    Width = 42,
-                    Height = 42,
-                    Palette = new Color32[]
-                    {
-                        new Color32(255, 255, 255, 255), // 0: Parlak Pırlanta Beyazı & Işık Patlaması
+                        new Color32(255, 255, 255, 255), // 0: Parlak Pırlanta Beyazı
                         new Color32(0, 210, 211, 255),   // 1: Elektrik Camgöbeği Üst Faset
                         new Color32(84, 160, 255, 255),  // 2: Işıltılı Safir Gök Mavisi
                         new Color32(46, 134, 222, 255),  // 3: Derin Kraliyet Laciverti
@@ -728,12 +625,12 @@ namespace SandSort.EditorTools
                         new Color32(12, 16, 33, 255)     // 5: Obsidiyen Kadife Gece Arka Planı
                     },
                     BackgroundColorId = 5,
-                    DockCapacity = 5, // Büyük final için 5'li rıhtım
-                    ColumnCount = 5,
-                    MinBucketCapacity = 65,
-                    MaxBucketCapacity = 125,
-                    ScrambleFactor = 0.12f,
-                    MysteryStartRow = 1,
+                    DockCapacity = 5,
+                    ColumnCount = 4,
+                    MinBucketCapacity = 60,
+                    MaxBucketCapacity = 115,
+                    ScrambleFactor = 0.08f,
+                    MysteryStartRow = 2,
                     SandFillSpeedMultiplier = 2.4f,
                     PixelEvaluator = (x, y, w, h) =>
                     {
@@ -742,56 +639,53 @@ namespace SandSort.EditorTools
                         bool inDiamond = false;
                         int c = 5;
 
-                        // Crown
-                        if (y >= 24 && y <= 33)
+                        if (y >= 23 && y <= 32)
                         {
-                            float t = (y - 24) / 9.0f;
-                            float maxDx = 17.5f - t * 7.5f;
+                            float t = (y - 23) / 9.0f;
+                            float maxDx = 16.5f - t * 7.0f;
                             if (Mathf.Abs(dx) <= maxDx)
                             {
                                 inDiamond = true;
-                                if (y >= 29 && Mathf.Abs(dx) <= 8.5f) c = 0; // White Table
-                                else if (Mathf.Abs(dx) <= 5.0f) c = 1; // Aqua Star
-                                else if (Mathf.Abs(dx) <= 11.0f) c = 2; // Sky Blue Kite
-                                else c = 4; // Amethyst Edge
+                                if (y >= 28 && Mathf.Abs(dx) <= 7.5f) c = 0;
+                                else if (Mathf.Abs(dx) <= 4.5f) c = 1;
+                                else if (Mathf.Abs(dx) <= 10.0f) c = 2;
+                                else c = 4;
                             }
                         }
-                        // Pavilion
-                        else if (y >= 5 && y < 24)
+                        else if (y >= 5 && y < 23)
                         {
-                            float t = (y - 5) / 19.0f;
-                            float maxDx = t * 17.5f;
+                            float t = (y - 5) / 18.0f;
+                            float maxDx = t * 16.5f;
                             if (Mathf.Abs(dx) <= maxDx)
                             {
                                 inDiamond = true;
                                 float ratio = Mathf.Abs(dx) / (maxDx + 0.001f);
-                                if (ratio < 0.28f) c = 1; // Aqua
-                                else if (ratio < 0.58f) c = 2; // Sky Blue
-                                else if (ratio < 0.84f) c = 3; // Royal Blue
-                                else c = 4; // Amethyst Edge
+                                if (ratio < 0.28f) c = 1;
+                                else if (ratio < 0.58f) c = 2;
+                                else if (ratio < 0.84f) c = 3;
+                                else c = 4;
                             }
                         }
 
-                        // Outer Sparkles in Obsidian Velvet
                         if (!inDiamond)
                         {
-                            if ((Mathf.Abs(x - 8) <= 1 && y == 35) || (x == 8 && Mathf.Abs(y - 35) <= 1) ||
-                                (Mathf.Abs(x - 33) <= 1 && y == 35) || (x == 33 && Mathf.Abs(y - 35) <= 1) ||
-                                (Mathf.Abs(x - 21) <= 1 && y == 2) || (x == 21 && Mathf.Abs(y - 2) <= 1))
-                                return 0; // Sparkle Star
-                            return 5; // Velvet Background
+                            if ((Mathf.Abs(x - 7) <= 1 && y == 33) || (x == 7 && Mathf.Abs(y - 33) <= 1) ||
+                                (Mathf.Abs(x - 33) <= 1 && y == 33) || (x == 33 && Mathf.Abs(y - 33) <= 1) ||
+                                (Mathf.Abs(x - 20) <= 1 && y == 2) || (x == 20 && Mathf.Abs(y - 2) <= 1))
+                                return 0;
+                            return 5;
                         }
 
                         return c;
                     }
                 },
+
                 // =========================================================================
-                // LEVEL 9: "Retro Uzay Roketi" (Cosmic Apollo Rocket) - 42x42 (1,764 kum tanesi)
-                // Alevli fırlatıcı roket, uzay pencereleri ve derin uzay yıldızları.
+                // LEVEL 8: "Retro Uzay Roketi" (Cosmic Apollo Rocket) - 42x42
                 // =========================================================================
                 new StudioLevelBlueprint
                 {
-                    Index = 9,
+                    Index = 8,
                     Title = "Retro Uzay Roketi",
                     Width = 42,
                     Height = 42,
@@ -809,7 +703,7 @@ namespace SandSort.EditorTools
                     ColumnCount = 5,
                     MinBucketCapacity = 60,
                     MaxBucketCapacity = 115,
-                    ScrambleFactor = 0.05f,
+                    ScrambleFactor = 0.08f,
                     MysteryStartRow = 1,
                     SandFillSpeedMultiplier = 2.3f,
                     PixelEvaluator = (x, y, w, h) =>
@@ -817,56 +711,48 @@ namespace SandSort.EditorTools
                         float cx = w / 2.0f;
                         float dx = x - cx;
 
-                        // Flame at bottom (y=2..12)
                         if (y >= 2 && y <= 12)
                         {
                             float flameW = (12 - y) * 0.85f;
                             if (Mathf.Abs(dx) <= flameW)
                             {
-                                if (Mathf.Abs(dx) <= flameW * 0.45f) return 1; // Inner yellow flame
-                                return 0; // Outer orange flame
+                                if (Mathf.Abs(dx) <= flameW * 0.45f) return 1;
+                                return 0;
                             }
                         }
 
-                        // Rocket Body
                         if (y >= 10 && y <= 39)
                         {
-                            // Nose cone (y=30..39)
                             if (y > 30)
                             {
                                 float noseW = (39 - y) * 0.65f;
                                 if (Mathf.Abs(dx) <= noseW)
-                                    return 4; // Red nose cone
+                                    return 4;
                             }
-                            // Main fuselage (y=12..30)
                             else if (y >= 12 && y <= 30)
                             {
                                 float fuselageW = 6.2f;
                                 if (Mathf.Abs(dx) <= fuselageW)
                                 {
-                                    // Porthole window at (cx, 23)
                                     float pDist = Mathf.Sqrt(dx * dx + (y - 23) * (y - 23));
                                     if (pDist <= 3.2f)
                                     {
-                                        if (pDist <= 2.2f) return 3; // Cyan window
-                                        return 4; // Red window trim
+                                        if (pDist <= 2.2f) return 3;
+                                        return 4;
                                     }
-                                    // Body stripe
                                     if (y == 15 || y == 28) return 4;
-                                    return 2; // White body
+                                    return 2;
                                 }
                             }
 
-                            // Delta Fins at sides (y=10..20)
                             if (y >= 10 && y <= 20)
                             {
                                 float finReach = 6.2f + (20 - y) * 0.85f;
                                 if (Mathf.Abs(dx) > 6.2f && Mathf.Abs(dx) <= finReach)
-                                    return 4; // Red delta fin
+                                    return 4;
                             }
                         }
 
-                        // Deep space stars in background
                         (int sx, int sy)[] stars = new (int, int)[]
                         {
                             (7, 36), (35, 37), (5, 18), (37, 16), (9, 7), (33, 6), (21, 40)
@@ -874,20 +760,19 @@ namespace SandSort.EditorTools
                         foreach (var (sx, sy) in stars)
                         {
                             if ((Mathf.Abs(x - sx) <= 1 && y == sy) || (x == sx && Mathf.Abs(y - sy) <= 1))
-                                return 1; // Twinkling star
+                                return 1;
                         }
 
-                        return 5; // Deep Space
+                        return 5;
                     }
                 },
 
                 // =========================================================================
-                // LEVEL 10: "Şampiyonluk Altın Kupası" (Grand Champions Trophy) - 44x44 (1,936 kum tanesi)
-                // Şampiyonluk kupası, zümrüt kurdele, yakut madalyon, altın ışıltılar.
+                // LEVEL 9: "Şampiyonluk Altın Kupası" (Grand Champions Trophy) - 44x44
                 // =========================================================================
                 new StudioLevelBlueprint
                 {
-                    Index = 10,
+                    Index = 9,
                     Title = "Şampiyonluk Altın Kupası",
                     Width = 44,
                     Height = 44,
@@ -901,11 +786,11 @@ namespace SandSort.EditorTools
                         new Color32(19, 15, 64, 255)     // 5: Kraliyet Laciverti Fon (#130F40)
                     },
                     BackgroundColorId = 5,
-                    DockCapacity = 5,
+                    DockCapacity = 6,
                     ColumnCount = 5,
                     MinBucketCapacity = 65,
                     MaxBucketCapacity = 120,
-                    ScrambleFactor = 0.12f,
+                    ScrambleFactor = 0.10f,
                     MysteryStartRow = 1,
                     SandFillSpeedMultiplier = 2.2f,
                     PixelEvaluator = (x, y, w, h) =>
@@ -913,7 +798,6 @@ namespace SandSort.EditorTools
                         float cx = w / 2.0f;
                         float dx = x - cx;
 
-                        // Base Pedestal (y=4..10)
                         if (y >= 4 && y <= 10)
                         {
                             float baseW = 12.0f - (y - 4) * 0.6f;
@@ -921,72 +805,58 @@ namespace SandSort.EditorTools
                             {
                                 if (y == 6 || y == 7)
                                 {
-                                    if (Mathf.Abs(dx) <= baseW - 1.5f) return 2; // Emerald ribbon plaque
+                                    if (Mathf.Abs(dx) <= baseW - 1.5f) return 2;
                                 }
-                                if ((x + y) % 3 == 0) return 1; // Amber shadow
-                                return 0; // Gold base
+                                if ((x + y) % 3 == 0) return 1;
+                                return 0;
                             }
                         }
 
-                        // Stem (y=10..16)
                         if (y > 10 && y <= 16)
                         {
                             float stemW = 3.6f + Mathf.Abs(y - 13) * 0.5f;
                             if (Mathf.Abs(dx) <= stemW)
                             {
-                                // Ruby star medallion at center of stem
-                                if (y >= 12 && y <= 14 && Mathf.Abs(dx) <= 1.8f) return 3; // Ruby
-                                return 0; // Gold stem
+                                if (y >= 12 && y <= 14 && Mathf.Abs(dx) <= 1.8f) return 3;
+                                return 0;
                             }
                         }
 
-                        // Main Cup Body (y=16..38)
                         if (y > 16 && y <= 38)
                         {
                             float tCup = (y - 16) / 22.0f;
                             float cupW = 4.0f + Mathf.Sin(tCup * Mathf.PI * 0.5f) * 12.5f;
 
-                            // Handles (y=21..35)
                             if (y >= 21 && y <= 35)
                             {
                                 float handleOuter = cupW + 6.0f;
                                 float handleInner = cupW + 2.5f;
                                 if (Mathf.Abs(dx) <= handleOuter && Mathf.Abs(dx) >= handleInner)
                                 {
-                                    return (x % 2 == 0) ? 0 : 1; // Gold/Amber handle
+                                    return (x % 2 == 0) ? 0 : 1;
                                 }
                             }
 
                             if (Mathf.Abs(dx) <= cupW)
                             {
-                                // Lip rim
                                 if (y >= 36)
                                 {
-                                    if (Mathf.Abs(dx - 5f) < 2.5f) return 4; // White flare highlight
-                                    return 0; // Gold rim
+                                    if (Mathf.Abs(dx - 5f) < 2.5f) return 4;
+                                    return 0;
                                 }
 
-                                // Star in center of cup (y=25..29)
                                 float sDist = Mathf.Sqrt(dx * dx + (y - 27) * (y - 27));
-                                if (sDist <= 3.2f)
+                                if (sDist <= 4.0f)
                                 {
-                                    if (sDist <= 1.8f || Mathf.Abs(dx) <= 0.8f || Mathf.Abs(y - 27) <= 0.8f)
-                                        return 3; // Ruby star
-                                    return 2; // Emerald halo
+                                    if (sDist <= 2.2f) return 3;
+                                    return 4;
                                 }
 
-                                // Highlight stripe along left
-                                if (dx >= -cupW * 0.75f && dx <= -cupW * 0.45f)
-                                {
-                                    return 4; // Pearl white reflection
-                                }
-
-                                if (dx > cupW * 0.4f) return 1; // Amber shadow on right
-                                return 0; // Gold body
+                                if (dx > cupW * 0.4f) return 1;
+                                return 0;
                             }
                         }
 
-                        // Victory confetti stars in background
                         (int sx, int sy)[] sparkles = new (int, int)[]
                         {
                             (6, 40), (37, 41), (5, 20), (38, 22), (8, 6), (36, 7), (22, 42)
@@ -994,16 +864,108 @@ namespace SandSort.EditorTools
                         foreach (var (sx, sy) in sparkles)
                         {
                             if ((Mathf.Abs(x - sx) <= 1 && y == sy) || (x == sx && Mathf.Abs(y - sy) <= 1))
-                                return 4; // White sparkle flare
+                                return 4;
                         }
 
-                        return 5; // Royal Navy
+                        return 5;
+                    }
+                },
+
+                // =========================================================================
+                // LEVEL 10: "Görkemli Anka Kuşu" (Grand Phoenix Crest) - 48x48
+                // =========================================================================
+                new StudioLevelBlueprint
+                {
+                    Index = 10,
+                    Title = "Görkemli Anka Kuşu",
+                    Width = 48,
+                    Height = 48,
+                    Palette = new Color32[]
+                    {
+                        new Color32(255, 75, 43, 255),   // 0: Alev Kırmızısı (#FF4B2B)
+                        new Color32(255, 180, 0, 255),   // 1: Altın Turuncu Alev (#FFB400)
+                        new Color32(255, 230, 80, 255),  // 2: Parlak Sarı Kıvılcım (#FFE650)
+                        new Color32(0, 210, 211, 255),   // 3: Safir Mavi Anka Gözü (#00D2D3)
+                        new Color32(156, 39, 176, 255),  // 4: Büyülü Ametist Kanat Uçları (#9C27B0)
+                        new Color32(255, 255, 255, 255), // 5: Saf Ak Işık (#FFFFFF)
+                        new Color32(18, 14, 42, 255)     // 6: Kozmik Derin Gece (#120E2A)
+                    },
+                    BackgroundColorId = 6,
+                    DockCapacity = 6,
+                    ColumnCount = 5,
+                    MinBucketCapacity = 70,
+                    MaxBucketCapacity = 130,
+                    ScrambleFactor = 0.10f,
+                    MysteryStartRow = 1,
+                    SandFillSpeedMultiplier = 2.0f,
+                    PixelEvaluator = (x, y, w, h) =>
+                    {
+                        float cx = w / 2.0f;
+                        float dx = x - cx;
+
+                        if (y >= 32 && y <= 44 && Mathf.Abs(dx) <= 6.5f)
+                        {
+                            if (y >= 40)
+                            {
+                                if (Mathf.Abs(dx) <= 2.0f || Mathf.Abs(dx - 4.0f) <= 1.0f || Mathf.Abs(dx + 4.0f) <= 1.0f)
+                                    return 2;
+                            }
+
+                            if (y == 36 && (Mathf.Abs(dx - (-1.5f)) <= 0.8f || Mathf.Abs(dx - 1.5f) <= 0.8f))
+                                return 3;
+
+                            if (y == 34 && Mathf.Abs(dx) <= 1.2f) return 1;
+
+                            return 0;
+                        }
+
+                        if (y >= 16 && y <= 32 && Mathf.Abs(dx) <= 7.5f)
+                        {
+                            float hDist = Mathf.Sqrt(dx * dx + (y - 24) * (y - 24));
+                            if (hDist <= 3.2f) return 5;
+                            if (hDist <= 5.5f) return 2;
+                            return 0;
+                        }
+
+                        if (y >= 18 && y <= 42)
+                        {
+                            float wingY = y - 18;
+                            float maxWingReach = 7.5f + Mathf.Sin(wingY / 24.0f * Mathf.PI) * 14.0f;
+                            if (Mathf.Abs(dx) > 7.0f && Mathf.Abs(dx) <= maxWingReach)
+                            {
+                                float spanRatio = (Mathf.Abs(dx) - 7.0f) / (maxWingReach - 7.0f + 0.001f);
+                                if (spanRatio > 0.82f) return 4;
+                                if (spanRatio > 0.52f) return 1;
+                                return 0;
+                            }
+                        }
+
+                        if (y >= 2 && y <= 18)
+                        {
+                            float tailWidth = (18 - y) * 0.7f + 2.0f;
+                            if (Mathf.Abs(dx) <= tailWidth)
+                            {
+                                if (Mathf.Abs(dx) <= tailWidth * 0.35f) return 2;
+                                if (Mathf.Abs(dx) <= tailWidth * 0.70f) return 1;
+                                return 0;
+                            }
+                        }
+
+                        (int sx, int sy)[] stars = new (int, int)[]
+                        {
+                            (5, 43), (42, 44), (4, 22), (43, 20), (6, 7), (41, 8), (24, 46)
+                        };
+                        foreach (var (sx, sy) in stars)
+                        {
+                            if ((Mathf.Abs(x - sx) <= 1 && y == sy) || (x == sx && Mathf.Abs(y - sy) <= 1))
+                                return 2;
+                        }
+
+                        return 6;
                     }
                 }
-
             };
         }
-
         private static string ToCleanAsciiTitle(string title)
         {
             if (string.IsNullOrEmpty(title)) return "Level";

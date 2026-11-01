@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Level_03
   m_EditorClassIdentifier: SandSort.Data::SandSort.Data.LevelDataSO
   LevelIndex: 3
-  LevelTitle: Level 48PX_2
+  LevelTitle: Parlayan Sans Yildizi
   Width: 32
   Height: 32
   Gravity: 2
