@@ -82,33 +82,75 @@ namespace SandSort.EditorTools
             return Mathf.Clamp01(d);
         }
 
-        public static DifficultyProfile GetDifficultyProfile(int levelIndex, int totalLevels = TotalLevels, int totalGrains = 0)
+        public static DifficultyProfile GetDifficultyProfile(int levelIndex, int totalLevels = 10, int totalGrains = 0)
         {
-            float d = ComputeDifficultyIndex(levelIndex, totalLevels);
+            float d = Mathf.Clamp01((levelIndex - 1) / (float)Mathf.Max(1, totalLevels - 1));
 
-            // Progressive grid size: 24x24 (576 grains, quick 20s finish) -> 48x48
-            int gridRes = (levelIndex == 1) ? 24 : (levelIndex == 2 ? 30 : (levelIndex <= 4 ? 36 : Mathf.RoundToInt(Mathf.Lerp(36f, 48f, d))));
+            // Progressive grid size: 24x24 (Level 1) -> 44x44 (Level 10)
+            int gridRes;
+            if (levelIndex == 1) gridRes = 24;
+            else if (levelIndex == 2) gridRes = 28;
+            else if (levelIndex == 3) gridRes = 30;
+            else if (levelIndex == 4) gridRes = 32;
+            else if (levelIndex == 5) gridRes = 36;
+            else if (levelIndex == 6) gridRes = 38;
+            else if (levelIndex == 7) gridRes = 40;
+            else if (levelIndex == 8) gridRes = 42;
+            else if (levelIndex == 9) gridRes = 42;
+            else gridRes = 44;
+
             if (totalGrains <= 0) totalGrains = gridRes * gridRes;
 
-            int columns = d < 0.12f ? 2 : d < 0.35f ? 3 : d < 0.65f ? 4 : 5;
-            int rows = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(2f, 12f, d)), 2, 14);
-            int dock = d < 0.30f ? 5 : d < 0.85f ? 4 : 3;
+            // Progressive Column Count: 2 (easy) -> 3 (mid) -> 4 (hard) -> 5 (expert)
+            int columns;
+            if (levelIndex <= 2) columns = 2;
+            else if (levelIndex <= 5) columns = 3;
+            else if (levelIndex <= 8) columns = 4;
+            else columns = 5;
 
-            // Bucket size follows from rows x columns => same picture, more buckets as D grows.
+            // Progressive Rows per column
+            int rows;
+            if (levelIndex == 1) rows = 3;
+            else if (levelIndex == 2) rows = 4;
+            else if (levelIndex <= 4) rows = 4;
+            else if (levelIndex <= 6) rows = 5;
+            else if (levelIndex <= 8) rows = 5;
+            else rows = 6;
+
+            // Progressive Dock Capacity: 4 for early levels, 5 for mid-expert
+            int dock = (levelIndex <= 3) ? 4 : 5;
+
+            // Bucket capacities proportional to grid grains
             float avgCap = totalGrains / (float)(columns * rows);
-            int minCap = Mathf.Max(10, Mathf.RoundToInt(avgCap * 0.88f));
+            int minCap = Mathf.Max(15, Mathf.RoundToInt(avgCap * 0.88f));
             int maxCap = Mathf.Max(minCap, Mathf.RoundToInt(avgCap * 1.12f));
 
-            // Visible front rows shrink from 5 to 1 as D grows (none hidden at the very start).
-            int mystery = 99;
-            if (d >= 0.15f)
-            {
-                float k = Mathf.InverseLerp(0.15f, 0.85f, d);
-                mystery = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(5f, 1f, k)), 1, 5);
-            }
+            // Progressive Mystery ('?') Row:
+            // Easy (1-3): 99 (All visible, no '?')
+            // Mid (4): 3 (Only 3rd row is '?')
+            // Mid-Hard (5-6): 2 (Rows 0-1 visible, rows >= 2 are '?')
+            // Hard/Expert (7-10): 1 (Only front row visible, all others '?')
+            int mystery;
+            if (levelIndex <= 3) mystery = 99;
+            else if (levelIndex == 4) mystery = 3;
+            else if (levelIndex <= 6) mystery = 2;
+            else mystery = 1;
 
-            // Turbo fill speed for early levels (e.g. Level 1 = 3.8x for ultra snappy feel), scaling to standard fast 2.4x
-            float speedMult = (levelIndex == 1) ? 3.8f : (levelIndex == 2 ? 3.2f : (levelIndex <= 4 ? 2.8f : 2.4f));
+            // Progressive Sand Fill Speed (3.8x down to 2.2x)
+            float speedMult;
+            if (levelIndex == 1) speedMult = 3.8f;
+            else if (levelIndex == 2) speedMult = 3.4f;
+            else if (levelIndex == 3) speedMult = 3.2f;
+            else if (levelIndex == 4) speedMult = 3.0f;
+            else if (levelIndex == 5) speedMult = 2.8f;
+            else if (levelIndex == 6) speedMult = 2.6f;
+            else if (levelIndex == 7) speedMult = 2.5f;
+            else if (levelIndex == 8) speedMult = 2.4f;
+            else if (levelIndex == 9) speedMult = 2.3f;
+            else speedMult = 2.2f;
+
+            // Progressive Scramble Factor
+            float scramble = Mathf.Clamp(d * 0.40f, 0f, 0.40f);
 
             return new DifficultyProfile
             {
@@ -119,13 +161,26 @@ namespace SandSort.EditorTools
                 ActiveDockCapacity = dock,
                 MinBucketCapacity = minCap,
                 MaxBucketCapacity = maxCap,
-                ScrambleFactor = Mathf.Lerp(0f, 0.55f, d),
+                ScrambleFactor = scramble,
                 MysteryBucketStartRow = mystery,
                 SandFillSpeedMultiplier = speedMult
             };
         }
 
-        public static void PopulateLevelFromTexture(
+                private static bool IsDefaultVibrantPalette(Color32[] p)
+        {
+            if (p == null || p.Length != GameConstants.DefaultVibrantPalette.Length) return false;
+            for (int i = 0; i < p.Length; i++)
+            {
+                if (p[i].r != GameConstants.DefaultVibrantPalette[i].r ||
+                    p[i].g != GameConstants.DefaultVibrantPalette[i].g ||
+                    p[i].b != GameConstants.DefaultVibrantPalette[i].b)
+                    return false;
+            }
+            return true;
+        }
+
+public static void PopulateLevelFromTexture(
             LevelDataSO targetLevel,
             Texture2D sourceTexture,
             GenerationConfig config)
@@ -133,9 +188,20 @@ namespace SandSort.EditorTools
             if (targetLevel == null) throw new ArgumentNullException(nameof(targetLevel));
             if (sourceTexture == null) throw new ArgumentNullException(nameof(sourceTexture));
 
-            Color32[] palette = (config.Palette != null && config.Palette.Length > 0)
-                ? config.Palette
-                : GameConstants.DefaultVibrantPalette;
+            Color32[] palette = config.Palette;
+            if (palette == null || palette.Length == 0)
+            {
+                Color32[] extracted = ExtractDominantPaletteFromTexture(sourceTexture, 12);
+                if (extracted != null && extracted.Length > 0)
+                {
+                    palette = extracted;
+                    config.Palette = extracted;
+                }
+                else
+                {
+                    palette = GameConstants.DefaultVibrantPalette;
+                }
+            }
 
             targetLevel.Width = Mathf.Clamp(config.Width, 8, 80);
             targetLevel.Height = Mathf.Clamp(config.Height, 8, 80);
@@ -536,6 +602,60 @@ namespace SandSort.EditorTools
 
         private static Texture2D GetReadableResampledTexture(Texture2D source, int targetWidth, int targetHeight)
         {
+            if (!source.isReadable)
+            {
+                string assetPath = AssetDatabase.GetAssetPath(source);
+                if (!string.IsNullOrEmpty(assetPath))
+                {
+                    TextureImporter ti = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+                    if (ti != null && !ti.isReadable)
+                    {
+                        ti.isReadable = true;
+                        ti.filterMode = FilterMode.Point;
+                        ti.textureCompression = TextureImporterCompression.Uncompressed;
+                        ti.SaveAndReimport();
+                    }
+                }
+            }
+
+            // If source is already readable and matches target dimensions, use exact pixels without GPU blit flip!
+            if (source.isReadable && source.width == targetWidth && source.height == targetHeight)
+            {
+                Texture2D directCopy = new Texture2D(targetWidth, targetHeight, TextureFormat.RGBA32, false)
+                {
+                    filterMode = FilterMode.Point,
+                    wrapMode = TextureWrapMode.Clamp
+                };
+                directCopy.SetPixels32(source.GetPixels32());
+                directCopy.Apply();
+                return directCopy;
+            }
+
+            // High-fidelity CPU point-sampling if readable (prevents any GPU Y-inversion or bilinear blurring)
+            if (source.isReadable)
+            {
+                Texture2D resampled = new Texture2D(targetWidth, targetHeight, TextureFormat.RGBA32, false)
+                {
+                    filterMode = FilterMode.Point,
+                    wrapMode = TextureWrapMode.Clamp
+                };
+                Color32[] srcPixels = source.GetPixels32();
+                Color32[] dstPixels = new Color32[targetWidth * targetHeight];
+                for (int y = 0; y < targetHeight; y++)
+                {
+                    int srcY = Mathf.Clamp(Mathf.FloorToInt((y + 0.5f) / targetHeight * source.height), 0, source.height - 1);
+                    for (int x = 0; x < targetWidth; x++)
+                    {
+                        int srcX = Mathf.Clamp(Mathf.FloorToInt((x + 0.5f) / targetWidth * source.width), 0, source.width - 1);
+                        dstPixels[y * targetWidth + x] = srcPixels[srcY * source.width + srcX];
+                    }
+                }
+                resampled.SetPixels32(dstPixels);
+                resampled.Apply();
+                return resampled;
+            }
+
+            // Fallback for non-readable textures via RenderTexture
             RenderTexture rt = RenderTexture.GetTemporary(
                 targetWidth,
                 targetHeight,
@@ -648,6 +768,118 @@ namespace SandSort.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             return createdLevels;
+        }
+
+        /// <summary>
+        /// Extracts the authentic dominant color palette (3 to 6 colors) directly from any Texture2D
+        /// using perceptual distance binning and frequency clustering.
+        /// Prevents forcing images into generic bright candy palettes.
+        /// </summary>
+        public static Color32[] ExtractDominantPaletteFromTexture(Texture2D source, int maxColors = 12, int minDistanceSq = 550)
+        {
+            if (source == null) return GameConstants.DefaultVibrantPalette;
+
+            Texture2D readable = GetReadableResampledTexture(source, source.width, source.height);
+            Color32[] pixels = readable.GetPixels32();
+            UnityEngine.Object.DestroyImmediate(readable);
+
+            // 1. Count frequencies of all opaque pixels
+            Dictionary<uint, (Color32 rep, int count)> rawCounts = new Dictionary<uint, (Color32, int)>();
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                Color32 p = pixels[i];
+                if (p.a < 80) continue; // Skip transparency
+
+                uint key = ((uint)p.r << 16) | ((uint)p.g << 8) | p.b;
+                if (rawCounts.TryGetValue(key, out var val))
+                {
+                    rawCounts[key] = (val.rep, val.count + 1);
+                }
+                else
+                {
+                    rawCounts[key] = (new Color32(p.r, p.g, p.b, 255), 1);
+                }
+            }
+
+            if (rawCounts.Count == 0) return GameConstants.DefaultVibrantPalette;
+
+            // Pure pixel art with clean colors: keep exact colors directly!
+            if (rawCounts.Count <= maxColors)
+            {
+                List<Color32> direct = new List<Color32>();
+                foreach (var pair in rawCounts) direct.Add(pair.Value.rep);
+                return direct.ToArray();
+            }
+
+            // 2. Sort raw colors by frequency
+            List<KeyValuePair<uint, (Color32 rep, int count)>> sorted = new List<KeyValuePair<uint, (Color32 rep, int count)>>(rawCounts);
+            sorted.Sort((a, b) => b.Value.count.CompareTo(a.Value.count));
+
+            // 3. Cluster compression noise (within distance <= 20, sq <= 400) into top centroids
+            const int noiseSq = 400;
+            List<(Color32 rep, int count)> clusters = new List<(Color32 rep, int count)>();
+            foreach (var pair in sorted)
+            {
+                Color32 cand = pair.Value.rep;
+                bool merged = false;
+                for (int c = 0; c < clusters.Count; c++)
+                {
+                    int dr = cand.r - clusters[c].rep.r;
+                    int dg = cand.g - clusters[c].rep.g;
+                    int db = cand.b - clusters[c].rep.b;
+                    if (dr * dr + dg * dg + db * db <= noiseSq)
+                    {
+                        clusters[c] = (clusters[c].rep, clusters[c].count + pair.Value.count);
+                        merged = true;
+                        break;
+                    }
+                }
+                if (!merged)
+                {
+                    clusters.Add((cand, pair.Value.count));
+                }
+            }
+
+            clusters.Sort((a, b) => b.count.CompareTo(a.count));
+
+            // 4. Select distinct colors ensuring minimum distance
+            List<Color32> result = new List<Color32>();
+            foreach (var cl in clusters)
+            {
+                Color32 candidate = cl.rep;
+                bool tooClose = false;
+                for (int j = 0; j < result.Count; j++)
+                {
+                    int dr = candidate.r - result[j].r;
+                    int dg = candidate.g - result[j].g;
+                    int db = candidate.b - result[j].b;
+                    if (dr * dr + dg * dg + db * db < minDistanceSq)
+                    {
+                        tooClose = true;
+                        break;
+                    }
+                }
+
+                if (!tooClose)
+                {
+                    result.Add(candidate);
+                    if (result.Count >= maxColors) break;
+                }
+            }
+
+            if (result.Count < 2)
+            {
+                foreach (var cl in clusters)
+                {
+                    if (!result.Contains(cl.rep))
+                    {
+                        result.Add(cl.rep);
+                        if (result.Count >= 2) break;
+                    }
+                }
+            }
+
+            return result.ToArray();
         }
 
         private static void EnsureFolderExists(string folderPath)

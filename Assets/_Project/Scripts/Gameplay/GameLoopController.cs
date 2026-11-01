@@ -131,7 +131,10 @@ namespace SandSort.Gameplay
             _isLevelActive = false;
             _tickTimer = 0f;
 
-            int targetResolution = _gridManager != null ? _gridManager.SandResolutionPerAxis : 0;
+            // Use exact native level resolution (Width x Height) so sand matrix and colors match 1:1 without 88x88 stretching!
+            int targetResolution = (_activeLevel.Width > 0 && _activeLevel.Height > 0)
+                ? 0
+                : (_gridManager != null ? _gridManager.SandResolutionPerAxis : 0);
             _simulator.Initialize(_activeLevel, targetResolution);
 
             _gridManager.BuildVisualGrid(_activeLevel, _simulator);

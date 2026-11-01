@@ -35,10 +35,10 @@ namespace SandSort.Gameplay.Containers
         [Header("Escalator / Conveyor Belt Settings (Live Tunable)")]
         [Tooltip("Yürüyen bandın hızı (Alt kısımda kovaların ne kadar süre kalarak kum toplayacağını belirler).")]
         [SerializeField, Range(0.4f, 3.5f)] private float _conveyorSpeed = 1.25f;
-        [Tooltip("Yeni seçilen kovanın alt bantta başlayacağı nokta (0.40 = Ortadan başlar ve sağa doğru gider).")]
-        [SerializeField, Range(0.05f, 0.65f)] private float _bottomSpawnNormalizedX = 0.40f;
+        [Tooltip("Yeni seçilen kovanın alt bantta başlayacağı nokta (0.50 = Tam ortadan başlar ve sağa doğru gider).")]
+        [SerializeField, Range(0.05f, 0.85f)] private float _bottomSpawnNormalizedX = 0.50f;
         [Tooltip("Kovaların bant üzerinde birbirine çarpmaması için minimum takip mesafesi.")]
-        [SerializeField, Range(0.42f, 0.90f)] private float _minBucketSpacingOnBelt = 0.65f;
+        [SerializeField, Range(0.50f, 1.60f)] private float _minBucketSpacingOnBelt = 1.10f;
         [SerializeField] private Vector3 _bucketWorldOffset = new Vector3(0f, 0f, -0.28f);
 
         private BucketView[] _activeBucketViews = Array.Empty<BucketView>();
@@ -75,6 +75,8 @@ namespace SandSort.Gameplay.Containers
         private void Awake()
         {
             ServiceLocator.Register(this);
+            if (_minBucketSpacingOnBelt < 1.05f) _minBucketSpacingOnBelt = 1.10f;
+            if (_bottomSpawnNormalizedX < 0.35f || _bottomSpawnNormalizedX > 0.65f) _bottomSpawnNormalizedX = 0.50f;
             Ensure3DPerspectiveCameraAndLighting();
         }
 
@@ -125,10 +127,10 @@ namespace SandSort.Gameplay.Containers
                 _bucketWorldOffset.z = -0.28f;
             }
 
-            // Start near left entrance so bucket travels entire bottom width to collect sand
-            if (_bottomSpawnNormalizedX > 0.22f)
+            // Start in the center of the bottom track (0.50 = center)
+            if (_bottomSpawnNormalizedX < 0.25f || _bottomSpawnNormalizedX > 0.75f)
             {
-                _bottomSpawnNormalizedX = 0.15f;
+                _bottomSpawnNormalizedX = 0.50f;
             }
 
             // Enforce active slot limit on the conveyor belt (matches BoardSimulator capacity 2..6)
@@ -413,6 +415,7 @@ namespace SandSort.Gameplay.Containers
 
         private void AdvanceConveyorBuckets(float dt)
         {
+            // 1. Advance all landed buckets along the belt loop
             for (int s = 0; s < _slotCount; s++)
             {
                 if (!_slotRuntimes[s].IsActive || _activeBucketViews[s] == null)
@@ -429,19 +432,47 @@ namespace SandSort.Gameplay.Containers
                     // While on bottom segment collecting sand, cruise at normal speed; speed up on return loop
                     bool currentlyOnBottom = _slotRuntimes[s].DistanceAlongLoop <= _bottomWidth;
                     float effectiveConveyorSpeed = currentlyOnBottom ? _conveyorSpeed : (_conveyorSpeed * 2.2f);
-                    float nextDist = (_slotRuntimes[s].DistanceAlongLoop + effectiveConveyorSpeed * dt) % _totalPerimeter;
+                    float step = effectiveConveyorSpeed * dt;
+                    _slotRuntimes[s].DistanceAlongLoop = (_slotRuntimes[s].DistanceAlongLoop + step) % _totalPerimeter;
+                }
+            }
 
-                    // Prevent buckets on the conveyor from overlapping if one is right ahead
-                    if (!IsTooCloseToAheadBucket(s, nextDist))
+            // 2. Strict Train-Car Anti-Overlap Solver:
+            // Ensure no two buckets on the belt ever penetrate or overlap each other.
+            // If bucket i is trailing bucket j, its distance along the loop is clamped behind j by at least _minBucketSpacingOnBelt.
+            for (int pass = 0; pass < 3; pass++)
+            {
+                for (int i = 0; i < _slotCount; i++)
+                {
+                    if (!_slotRuntimes[i].IsActive) continue;
+                    for (int j = 0; j < _slotCount; j++)
                     {
-                        _slotRuntimes[s].DistanceAlongLoop = nextDist;
-                    }
+                        if (i == j || !_slotRuntimes[j].IsActive) continue;
 
+                        float aheadDelta = (_slotRuntimes[j].DistanceAlongLoop - _slotRuntimes[i].DistanceAlongLoop + _totalPerimeter) % _totalPerimeter;
+                        if (aheadDelta >= 0f && aheadDelta < _minBucketSpacingOnBelt)
+                        {
+                            // Push trailing bucket i back so it never clips into leading bucket j
+                            _slotRuntimes[i].DistanceAlongLoop = (_slotRuntimes[j].DistanceAlongLoop - _minBucketSpacingOnBelt + _totalPerimeter) % _totalPerimeter;
+                        }
+                    }
+                }
+            }
+
+            // 3. Update transforms and visuals
+            for (int s = 0; s < _slotCount; s++)
+            {
+                if (!_slotRuntimes[s].IsActive || _activeBucketViews[s] == null) continue;
+
+                if (_slotRuntimes[s].HasLandedOnBelt)
+                {
+                    bool onBottomSegment;
+                    Vector3 flatLoopPos;
                     EvaluateLoopPositionAndTangent(
                         _slotRuntimes[s].DistanceAlongLoop,
-                        out Vector3 flatLoopPos,
+                        out flatLoopPos,
                         out _,
-                        out bool onBottomSegment);
+                        out onBottomSegment);
 
                     // 1. Corner Tunnel Underpass: smoothly dip bucket deeper in local Z and tuck under the 4 corner squares!
                     float cornerFactor = CalculateCornerTunnelFactor(in flatLoopPos);
@@ -453,8 +484,7 @@ namespace SandSort.Gameplay.Containers
 
                     Vector3 worldPos = TransformFlatPointToTiltedWorld(flatBucketPos);
 
-                    // 2. 3D Perspective Scale: Larger when close at the bottom (1.12x), smaller when far at the top (0.78x),
-                    //    plus smooth tuck when passing underneath the 4 corner square tunnels!
+                    // 2. 3D Perspective Scale
                     float depthT = Mathf.InverseLerp(_loopBottomY, _loopTopY, flatLoopPos.y);
                     float perspectiveScale = Mathf.Lerp(1.12f, 0.78f, depthT) * Mathf.Lerp(1.0f, 0.52f, cornerFactor);
 
@@ -497,49 +527,44 @@ namespace SandSort.Gameplay.Containers
             return t * t * (3f - 2f * t);
         }
 
-        private bool IsTooCloseToAheadBucket(int selfSlotIndex, float candidateDist)
+        public bool CanAcceptNewBucket()
         {
-            for (int other = 0; other < _slotCount; other++)
+            // 1. Check if there is an inactive slot available
+            bool hasFreeSlot = false;
+            for (int s = 0; s < _slotCount; s++)
             {
-                if (other == selfSlotIndex || !_slotRuntimes[other].IsActive || !_slotRuntimes[other].HasLandedOnBelt)
-                    continue;
-
-                float aheadDelta = (_slotRuntimes[other].DistanceAlongLoop - candidateDist + _totalPerimeter) % _totalPerimeter;
-                if (aheadDelta > 0.001f && aheadDelta < _minBucketSpacingOnBelt)
+                if (s < _slotRuntimes.Length && !_slotRuntimes[s].IsActive)
                 {
-                    return true;
+                    hasFreeSlot = true;
+                    break;
                 }
             }
-            return false;
+            if (!hasFreeSlot) return false;
+
+            // 2. Check if the center spawn zone is clear of existing active buckets
+            float centerDist = Mathf.Clamp(_bottomSpawnNormalizedX, 0.35f, 0.65f) * _bottomWidth;
+            for (int s = 0; s < _slotCount; s++)
+            {
+                if (s >= _slotRuntimes.Length || !_slotRuntimes[s].IsActive) continue;
+
+                float diff = Mathf.Abs(Mathf.DeltaAngle(
+                    (centerDist / _totalPerimeter) * 360f,
+                    (_slotRuntimes[s].DistanceAlongLoop / _totalPerimeter) * 360f)) / 360f * _totalPerimeter;
+
+                if (diff < _minBucketSpacingOnBelt + 0.08f)
+                {
+                    // Center spawn area is currently occupied by an active bucket!
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private float FindNonOverlappingSpawnDistance()
         {
-            float desiredDist = Mathf.Clamp(_bottomSpawnNormalizedX, 0.05f, 0.70f) * _bottomWidth;
-
-            // Check up to 6 steps backward along the loop so newly deployed buckets never land on top of an existing bucket
-            for (int attempt = 0; attempt < 8; attempt++)
-            {
-                bool conflict = false;
-                for (int s = 0; s < _slotCount; s++)
-                {
-                    if (!_slotRuntimes[s].IsActive) continue;
-                    float diff = Mathf.Abs(Mathf.DeltaAngle(
-                        (desiredDist / _totalPerimeter) * 360f,
-                        (_slotRuntimes[s].DistanceAlongLoop / _totalPerimeter) * 360f)) / 360f * _totalPerimeter;
-
-                    if (diff < _minBucketSpacingOnBelt)
-                    {
-                        conflict = true;
-                        break;
-                    }
-                }
-
-                if (!conflict) break;
-                desiredDist = (desiredDist - _minBucketSpacingOnBelt + _totalPerimeter) % _totalPerimeter;
-            }
-
-            return desiredDist;
+            // Center of bottom collection segment (X = 0 in world space) - always start in the center!
+            return Mathf.Clamp(_bottomSpawnNormalizedX, 0.35f, 0.65f) * _bottomWidth;
         }
 
         /// <summary>
@@ -628,7 +653,7 @@ namespace SandSort.Gameplay.Containers
             return list;
         }
 
-        public void PlaceBucketViewInSlot(int slotIndex, BucketView bucketView)
+        public void PlaceBucketViewInSlot(int slotIndex, BucketView bucketView, Action onLandedCallback = null)
         {
             if (slotIndex < 0 || slotIndex >= _slotCount || slotIndex >= _activeBucketViews.Length || slotIndex >= _slotRuntimes.Length || bucketView == null) return;
 
@@ -653,6 +678,7 @@ namespace SandSort.Gameplay.Containers
                 {
                     _slotRuntimes[capturedSlot].HasLandedOnBelt = true;
                 }
+                onLandedCallback?.Invoke();
             });
         }
 

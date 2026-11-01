@@ -98,21 +98,17 @@ namespace SandSort.UI
             {
                 _progressSlider = _progressFillBar.GetComponentInParent<Slider>();
             }
-            EnsureFillBarSprite();
-            UpdateOverallProgressBar(0f);
 
+            UpdateOverallProgressBar(0f, immediate: true);
             SetupJuicyPopups();
         }
 
+        private Tweener _hudProgressTweener;
+        private float _currentProgressRatio;
+
         private void EnsureFillBarSprite()
         {
-            if (_progressFillBar != null && _progressFillBar.sprite == null)
-            {
-                _progressFillBar.sprite = ProceduralUIUtility.GetOrCreateRoundedRectSprite(64, 16);
-                _progressFillBar.type = Image.Type.Filled;
-                _progressFillBar.fillMethod = Image.FillMethod.Horizontal;
-                _progressFillBar.fillOrigin = (int)Image.OriginHorizontal.Left;
-            }
+            // Do not override or replace the scene's existing sprite or rectangular geometry
         }
 
         #region Juicy Popup Architecture (Dream / Peak Style)
@@ -247,7 +243,7 @@ namespace SandSort.UI
             {
                 _winNextLevelButton.transform.SetParent(cardObj.transform, false);
                 StyleAs3DButton(_winNextLevelButton, roundedRect, new Vector2(0, -170), new Vector2(360, 78),
-                    new Color32(46, 204, 113, 255), new Color32(30, 132, 73, 255), "CONTINUE");
+                    new Color32(46, 204, 113, 255), new Color32(30, 132, 73, 255), "NEXT LEVEL");
             }
         }
 
@@ -417,13 +413,6 @@ namespace SandSort.UI
             btnRt.anchoredPosition = pos;
             btnRt.sizeDelta = size;
 
-            // Remove old children text or graphics if needed
-            for (int i = button.transform.childCount - 1; i >= 0; i--)
-            {
-                Transform child = button.transform.GetChild(i);
-                if (child.name.StartsWith("Btn_")) Destroy(child.gameObject);
-            }
-
             Image baseImg = button.GetComponent<Image>();
             if (baseImg != null)
             {
@@ -431,10 +420,49 @@ namespace SandSort.UI
             }
 
             // Shadow Lip
-            CreateSlicedImage(button.transform, "Btn_ShadowLip", roundedRect, new Vector2(0, -6), size, shadowColor);
-            // Front Face
-            CreateSlicedImage(button.transform, "Btn_Face", roundedRect, Vector2.zero, size, faceColor);
+            Transform shadowTr = button.transform.Find("Btn_ShadowLip");
+            Image shadowImg;
+            if (shadowTr == null)
+            {
+                shadowImg = CreateSlicedImage(button.transform, "Btn_ShadowLip", roundedRect, new Vector2(0, -6), size, shadowColor);
+                shadowTr = shadowImg.transform;
+            }
+            else
+            {
+                shadowImg = shadowTr.GetComponent<Image>();
+                if (shadowImg != null)
+                {
+                    shadowImg.sprite = roundedRect;
+                    shadowImg.color = shadowColor;
+                    shadowImg.rectTransform.anchoredPosition = new Vector2(0, -6);
+                    shadowImg.rectTransform.sizeDelta = size;
+                }
+            }
 
+            // Front Face
+            Transform faceTr = button.transform.Find("Btn_Face");
+            Image faceImg;
+            if (faceTr == null)
+            {
+                faceImg = CreateSlicedImage(button.transform, "Btn_Face", roundedRect, Vector2.zero, size, faceColor);
+                faceTr = faceImg.transform;
+            }
+            else
+            {
+                faceImg = faceTr.GetComponent<Image>();
+                if (faceImg != null)
+                {
+                    faceImg.sprite = roundedRect;
+                    faceImg.color = faceColor;
+                    faceImg.rectTransform.anchoredPosition = Vector2.zero;
+                    faceImg.rectTransform.sizeDelta = size;
+                }
+            }
+
+            shadowTr.SetSiblingIndex(0);
+            faceTr.SetSiblingIndex(1);
+
+            // Re-use or create TMP Label component
             TextMeshProUGUI tmp = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (tmp == null)
             {
@@ -442,13 +470,24 @@ namespace SandSort.UI
             }
             else
             {
+                tmp.gameObject.name = "Btn_Text";
                 tmp.transform.SetParent(button.transform, false);
                 tmp.rectTransform.anchoredPosition = new Vector2(0, 2);
+                tmp.rectTransform.sizeDelta = size;
+                ResolveDefaultFont();
+                if (_defaultFontAsset != null) tmp.font = _defaultFontAsset;
                 tmp.text = labelText;
                 tmp.fontSize = 28;
                 tmp.fontStyle = FontStyles.Bold;
+                tmp.alignment = TextAlignmentOptions.Center;
                 tmp.color = Color.white;
+                tmp.raycastTarget = false;
+                tmp.gameObject.SetActive(true);
             }
+
+            // CRITICAL: Text MUST be the frontmost sibling so it is never hidden behind Btn_Face!
+            tmp.transform.SetAsLastSibling();
+
             TrySetOutline(tmp, 0.28f, new Color32(20, 20, 20, 200));
         }
 
@@ -480,7 +519,7 @@ namespace SandSort.UI
                 _levelTitleText.text = $"LEVEL {evt.LevelIndex} — {evt.LevelTitle}";
             }
 
-            UpdateOverallProgressBar(0f);
+            UpdateOverallProgressBar(0f, immediate: true);
         }
 
         private void OnGrainArrivedInBucket(in GrainArrivedInBucketEvent evt)
@@ -490,10 +529,30 @@ namespace SandSort.UI
             UpdateOverallProgressBar(ratio);
         }
 
-        private void UpdateOverallProgressBar(float ratio01)
+        private void UpdateOverallProgressBar(float ratio01, bool immediate = false)
         {
-            float clamped = Mathf.Clamp01(ratio01);
-            int pct = Mathf.FloorToInt(clamped * 100f);
+            float targetRatio = Mathf.Clamp01(ratio01);
+
+            _hudProgressTweener?.Kill();
+
+            if (immediate)
+            {
+                _currentProgressRatio = targetRatio;
+                ApplyProgressFill(_currentProgressRatio);
+            }
+            else
+            {
+                _hudProgressTweener = DOTween.To(() => _currentProgressRatio, x =>
+                {
+                    _currentProgressRatio = x;
+                    ApplyProgressFill(_currentProgressRatio);
+                }, targetRatio, 0.35f).SetEase(Ease.OutQuad);
+            }
+        }
+
+        private void ApplyProgressFill(float ratio)
+        {
+            int pct = Mathf.FloorToInt(ratio * 100f);
             if (_progressPercentText != null)
             {
                 _progressPercentText.SetText("{0}%", pct);
@@ -503,13 +562,29 @@ namespace SandSort.UI
             {
                 _progressSlider.minValue = 0f;
                 _progressSlider.maxValue = 1f;
-                _progressSlider.value = clamped;
+                _progressSlider.value = ratio;
             }
 
             if (_progressFillBar != null)
             {
-                EnsureFillBarSprite();
-                _progressFillBar.fillAmount = clamped;
+                // If the bar is configured as an Image.Type.Filled with a sprite, use fillAmount
+                if (_progressFillBar.sprite != null && _progressFillBar.type == Image.Type.Filled)
+                {
+                    _progressFillBar.fillAmount = ratio;
+                }
+                else
+                {
+                    // Clean slider behavior via RectTransform horizontal anchor stretching:
+                    // Preserves the sharp square/rectangular look without distorting pixel aspect ratio
+                    RectTransform rt = _progressFillBar.rectTransform;
+                    if (rt != null)
+                    {
+                        rt.anchorMin = new Vector2(0f, 0f);
+                        rt.anchorMax = new Vector2(ratio, 1f);
+                        rt.offsetMin = Vector2.zero;
+                        rt.offsetMax = Vector2.zero;
+                    }
+                }
             }
         }
 
@@ -700,6 +775,8 @@ namespace SandSort.UI
 
         private void KillAllPopupTweens()
         {
+            _hudProgressTweener?.Kill();
+            _hudProgressTweener = null;
             _activePopupSequence?.Kill();
             _activePopupSequence = null;
             _winSunburstTweener?.Kill();

@@ -188,15 +188,8 @@ namespace SandSort.Simulation
             int targetChunkSize = levelData.LevelIndex <= 1 ? 85 : (levelData.LevelIndex == 2 ? 70 : 55);
             SubdivideOversizedBuckets(targetMaxPerBucket, targetChunkSize);
 
-            // Level Progression Column Count:
-            // Levels 1..10 -> 2 Columns
-            // Levels 11..20 -> 3 Columns
-            // Levels 21+ -> 4 Columns
-            int targetColumnCount = levelData.LevelIndex <= 10 ? 2 : (levelData.LevelIndex <= 20 ? 3 : 4);
-            if (_columnCount != targetColumnCount && _columnCount > 0)
-            {
-                RedistributeIntoTargetColumns(targetColumnCount);
-            }
+            // Columns strictly follow levelData.Columns.Length as defined in the level asset
+            _columnCount = colCount;
 
             for (int s = 0; s < _dockCapacity; s++)
             {
