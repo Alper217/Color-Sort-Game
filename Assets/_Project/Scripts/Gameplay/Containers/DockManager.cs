@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using SandSort.Core;
 using SandSort.Data;
 using SandSort.Gameplay.Grid;
@@ -265,7 +265,6 @@ namespace SandSort.Gameplay.Containers
             float cy = (_loopBottomY + _loopTopY) * 0.5f;
             const float trackWidth = 0.36f;
             const float bedThickness = 0.16f;
-            const float railThickness = 0.075f;
             const float railDepthZ = 0.20f;
             float bedZ = _loopZ + 0.12f;
             float railZ = _loopZ - 0.02f;
@@ -616,6 +615,19 @@ namespace SandSort.Gameplay.Containers
             return GetSlotBucketWorldPosition(slotIndex) + new Vector3(0f, 0.05f, -0.04f);
         }
 
+        public System.Collections.Generic.IReadOnlyList<Vector3> GetActiveBucketWorldPositions()
+        {
+            var list = new System.Collections.Generic.List<Vector3>(_slotCount);
+            for (int i = 0; i < _slotCount; i++)
+            {
+                if (_slotRuntimes != null && i < _slotRuntimes.Length && _slotRuntimes[i].IsActive)
+                {
+                    list.Add(GetSlotBucketWorldPosition(i));
+                }
+            }
+            return list;
+        }
+
         public void PlaceBucketViewInSlot(int slotIndex, BucketView bucketView)
         {
             if (slotIndex < 0 || slotIndex >= _slotCount || slotIndex >= _activeBucketViews.Length || slotIndex >= _slotRuntimes.Length || bucketView == null) return;
@@ -658,6 +670,7 @@ namespace SandSort.Gameplay.Containers
             if (view != null)
             {
                 view.UpdateFillProgress(updatedState.CurrentCount, updatedState.MaxCapacity);
+                SandSort.Gameplay.VFX.JuicyVFXManager.Instance?.PlayGrainSplashMicroVFX(GetSlotIntakeWorldPosition(slotIndex), view.BucketColor);
             }
 
             EventBus<GrainArrivedInBucketEvent>.Publish(new GrainArrivedInBucketEvent(
@@ -669,6 +682,10 @@ namespace SandSort.Gameplay.Containers
 
             if (bucketCompleted)
             {
+                Vector3 fxPos = view != null ? view.CachedTransform.position : GetSlotBucketWorldPosition(slotIndex);
+                Color32 fxColor = view != null ? view.BucketColor : (Color32)Color.yellow;
+                SandSort.Gameplay.VFX.JuicyVFXManager.Instance?.PlayBucketCompleteVFX(fxPos, fxColor);
+
                 if (slotIndex >= 0 && slotIndex < _activeBucketViews.Length)
                 {
                     _activeBucketViews[slotIndex] = null;

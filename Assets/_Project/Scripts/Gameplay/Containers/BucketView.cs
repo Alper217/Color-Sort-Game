@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using DG.Tweening;
 using SandSort.Core;
@@ -128,6 +128,7 @@ namespace SandSort.Gameplay.Containers
 
         public Transform CachedTransform => _transform != null ? _transform : (_transform = transform);
         public BucketData Data => _bucketData;
+        public Color32 BucketColor => _bucketColor;
         public int ColumnIndex => _columnIndex;
         public bool IsFrontSelectable => _isFrontSelectable;
         public Vector3 BaseScale => _baseScale;
@@ -533,6 +534,14 @@ namespace SandSort.Gameplay.Containers
                 ApplyLabelPlacement(PercentOffset);
                 _capacityText.fontSize = PercentFontSize;
                 _capacityText.SetText("{0}%", percent);
+                if (ratio >= 0.85f)
+                {
+                    _capacityText.color = new Color32(255, 235, 100, 255);
+                }
+                else
+                {
+                    _capacityText.color = Color.white;
+                }
             }
 
             ApplyColorProperties(ratio);
@@ -543,6 +552,12 @@ namespace SandSort.Gameplay.Containers
                 _sandFillTransform.DOKill(true);
                 _sandFillTransform.localScale = Vector3.one;
                 _sandFillTransform.DOPunchScale(new Vector3(0.025f, 0.025f, 0.015f), 0.10f, 3, 0.5f);
+            }
+
+            if (_bucketBodyTransform != null)
+            {
+                _bucketBodyTransform.DOKill(true);
+                _bucketBodyTransform.DOPunchScale(new Vector3(0.035f, 0.035f, -0.020f), 0.09f, 2, 0.4f);
             }
         }
 
@@ -955,17 +970,30 @@ namespace SandSort.Gameplay.Containers
         public void AnimateCompletionAndRelease(Action<BucketView> onCompleteCallback)
         {
             KillActiveTweens();
+            TriggerHoloSheenFlash(1.0f, 0.22f);
+
+            if (_capacityText != null)
+            {
+                _capacityText.text = "100%";
+                _capacityText.color = new Color32(255, 235, 90, 255);
+                // Soft, pleasant scale pop instead of aggressive punch
+                _capacityText.transform.DOPunchScale(Vector3.one * 0.08f, 0.25f, 1, 0.2f);
+            }
+
             Vector3 currentScale = _baseScale * _conveyorScaleMultiplier;
             _transform.localScale = currentScale;
 
             _activeSequence = DOTween.Sequence();
-            _activeSequence.Append(_transform.DOScale(currentScale * 1.22f, 0.12f).SetEase(Ease.OutBack));
-            _activeSequence.Append(_transform.DOMoveY(_transform.position.y + 0.45f, 0.16f).SetEase(Ease.InBack));
-            _activeSequence.Join(_transform.DOScale(Vector3.zero, 0.16f).SetEase(Ease.InBack));
+            // Gentle anticipatory squish/pop then smooth graceful lift & dissolve
+            _activeSequence.Append(_transform.DOScale(currentScale * 1.10f, 0.16f).SetEase(Ease.OutQuad));
+            _activeSequence.Append(_transform.DOMoveY(_transform.position.y + 0.45f, 0.32f).SetEase(Ease.OutCubic));
+            _activeSequence.Join(_transform.DORotate(new Vector3(0f, 90f, 0f), 0.32f, RotateMode.LocalAxisAdd).SetEase(Ease.OutQuad));
+            _activeSequence.Join(_transform.DOScale(Vector3.zero, 0.30f).SetEase(Ease.InCubic));
             _activeSequence.OnComplete(() =>
             {
                 _isOnConveyor = false;
                 _transform.localScale = _baseScale;
+                _transform.localRotation = Quaternion.identity;
                 onCompleteCallback?.Invoke(this);
             });
         }
