@@ -125,8 +125,14 @@ namespace SandSort.Gameplay.Containers
                 _bucketWorldOffset.z = -0.28f;
             }
 
-            // Enforce the 4-bucket active limit on the conveyor belt
-            _slotCount = Mathf.Clamp(slotCapacity, 2, 4);
+            // Start near left entrance so bucket travels entire bottom width to collect sand
+            if (_bottomSpawnNormalizedX > 0.22f)
+            {
+                _bottomSpawnNormalizedX = 0.15f;
+            }
+
+            // Enforce active slot limit on the conveyor belt (matches BoardSimulator capacity 2..6)
+            _slotCount = Mathf.Clamp(slotCapacity, 2, 6);
 
             // Hide the old static DockSlot boxes since we now use the 3D Escalator Loop around the tray!
             if (_fixedSlotTransforms != null)
@@ -421,7 +427,10 @@ namespace SandSort.Gameplay.Containers
 
                 if (_slotRuntimes[s].HasLandedOnBelt)
                 {
-                    float nextDist = (_slotRuntimes[s].DistanceAlongLoop + _conveyorSpeed * dt) % _totalPerimeter;
+                    // While on bottom segment collecting sand, cruise at normal speed; speed up on return loop
+                    bool currentlyOnBottom = _slotRuntimes[s].DistanceAlongLoop <= _bottomWidth;
+                    float effectiveConveyorSpeed = currentlyOnBottom ? _conveyorSpeed : (_conveyorSpeed * 2.2f);
+                    float nextDist = (_slotRuntimes[s].DistanceAlongLoop + effectiveConveyorSpeed * dt) % _totalPerimeter;
 
                     // Prevent buckets on the conveyor from overlapping if one is right ahead
                     if (!IsTooCloseToAheadBucket(s, nextDist))
@@ -590,7 +599,7 @@ namespace SandSort.Gameplay.Containers
         {
             if (slotIndex >= 0 && slotIndex < _slotRuntimes.Length && _slotRuntimes[slotIndex].IsActive)
             {
-                if (_activeBucketViews[slotIndex] != null)
+                if (slotIndex < _activeBucketViews.Length && _activeBucketViews[slotIndex] != null)
                 {
                     return _activeBucketViews[slotIndex].CachedTransform.position;
                 }
@@ -609,7 +618,7 @@ namespace SandSort.Gameplay.Containers
 
         public void PlaceBucketViewInSlot(int slotIndex, BucketView bucketView)
         {
-            if (slotIndex < 0 || slotIndex >= _slotCount || bucketView == null) return;
+            if (slotIndex < 0 || slotIndex >= _slotCount || slotIndex >= _activeBucketViews.Length || slotIndex >= _slotRuntimes.Length || bucketView == null) return;
 
             float spawnDist = FindNonOverlappingSpawnDistance();
             EvaluateLoopPositionAndTangent(spawnDist, out Vector3 flatLoopPos, out _, out _);
@@ -637,6 +646,8 @@ namespace SandSort.Gameplay.Containers
 
         public void NotifyGrainArrivedAtSlot(int slotIndex, BoardSimulator simulator)
         {
+            if (simulator == null || slotIndex < 0) return;
+
             if (!simulator.ConfirmGrainArrival(slotIndex, out ActiveDockSlotState updatedState, out bool bucketCompleted))
                 return;
 
@@ -658,7 +669,11 @@ namespace SandSort.Gameplay.Containers
 
             if (bucketCompleted)
             {
-                _activeBucketViews[slotIndex] = null;
+                if (slotIndex >= 0 && slotIndex < _activeBucketViews.Length)
+                {
+                    _activeBucketViews[slotIndex] = null;
+                }
+
                 if (slotIndex >= 0 && slotIndex < _slotRuntimes.Length)
                 {
                     _slotRuntimes[slotIndex].IsActive = false;

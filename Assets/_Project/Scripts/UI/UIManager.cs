@@ -18,7 +18,12 @@ namespace SandSort.UI
         [SerializeField] private TextMeshProUGUI _levelTitleText;
         [SerializeField] private TextMeshProUGUI _progressPercentText;
         [SerializeField] private Image _progressFillBar;
+        [SerializeField] private Slider _progressSlider;
         [SerializeField] private Button _restartButton;
+
+        [Header("Level Navigation (auto-created at runtime if left empty)")]
+        [SerializeField] private Button _prevLevelButton;
+        [SerializeField] private Button _nextLevelButton;
 
         [Header("Win & Fail Popup Panels")]
         [SerializeField] private GameObject _winPanel;
@@ -57,6 +62,34 @@ namespace SandSort.UI
             if (_restartButton != null) _restartButton.onClick.AddListener(OnRestartClicked);
             if (_winNextLevelButton != null) _winNextLevelButton.onClick.AddListener(OnNextLevelClicked);
             if (_failRetryButton != null) _failRetryButton.onClick.AddListener(OnRestartClicked);
+
+            if (_prevLevelButton != null) _prevLevelButton.onClick.AddListener(OnPrevLevelClicked);
+            if (_nextLevelButton != null) _nextLevelButton.onClick.AddListener(OnNextLevelClicked);
+
+            if (_progressSlider == null && _progressFillBar != null)
+            {
+                _progressSlider = _progressFillBar.GetComponentInParent<Slider>();
+            }
+            EnsureFillBarSprite();
+            UpdateOverallProgressBar(0f);
+        }
+
+        private void EnsureFillBarSprite()
+        {
+            if (_progressFillBar != null && _progressFillBar.sprite == null)
+            {
+                Texture2D tex = Texture2D.whiteTexture;
+                _progressFillBar.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+                _progressFillBar.type = Image.Type.Filled;
+                _progressFillBar.fillMethod = Image.FillMethod.Horizontal;
+                _progressFillBar.fillOrigin = (int)Image.OriginHorizontal.Left;
+            }
+        }
+
+        private void OnPrevLevelClicked()
+        {
+            if (_gameLoop == null) ServiceLocator.TryGet(out _gameLoop);
+            _gameLoop?.LoadPreviousLevel();
         }
 
         private void OnLevelStarted(in LevelStartedEvent evt)
@@ -90,24 +123,17 @@ namespace SandSort.UI
                 _progressPercentText.SetText("{0}%", pct);
             }
 
+            if (_progressSlider != null)
+            {
+                _progressSlider.minValue = 0f;
+                _progressSlider.maxValue = 1f;
+                _progressSlider.value = clamped;
+            }
+
             if (_progressFillBar != null)
             {
-                // If the Image has a Sprite and is set to Filled, update fillAmount
-                if (_progressFillBar.sprite != null && _progressFillBar.type == Image.Type.Filled)
-                {
-                    _progressFillBar.fillAmount = clamped;
-                }
-
-                // Also drive RectTransform horizontal anchors (0 -> clamped) so the light-blue bar
-                // smoothly grows from left to right even when Sprite is null or Image.Type is Simple/Sliced!
-                RectTransform rt = _progressFillBar.rectTransform;
-                if (rt != null)
-                {
-                    rt.anchorMin = new Vector2(0f, 0f);
-                    rt.anchorMax = new Vector2(clamped, 1f);
-                    rt.offsetMin = Vector2.zero;
-                    rt.offsetMax = Vector2.zero;
-                }
+                EnsureFillBarSprite();
+                _progressFillBar.fillAmount = clamped;
             }
         }
 

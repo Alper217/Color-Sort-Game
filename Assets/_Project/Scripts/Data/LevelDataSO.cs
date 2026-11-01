@@ -23,6 +23,14 @@ namespace SandSort.Data
         [Header("Dock & Queue Configuration")]
         [Range(2, 7)] public int ActiveDockCapacity = GameConstants.DefaultDockCapacity;
 
+        [Header("Mystery Buckets Progression")]
+        [Tooltip("Kaçıncı satırdan itibaren gizemli ('?') olacağı. 99 = gizemli kova yok, tüm sıralar görünür. 1 = ilk sıra açık, arkalar '?'. 2 = ilk 2 sıra açık.")]
+        public int MysteryBucketStartRow = 99;
+
+        [Header("Kum Akış & Dolum Hızı (0 = Global Ayarı Kullan)")]
+        [Tooltip("Bu seviyeye özel kum dolum ve vakum hızı çarpanı. 0 = varsayılan global hız. 1.0 = Normal, 2.5 = Hızlı, 3.8+ = Aşırı Hızlı.")]
+        [Range(0f, 6.0f)] public float SandFillSpeedMultiplier = 0f;
+
         [Header("Color Palette")]
         public Color32[] Palette = GameConstants.DefaultVibrantPalette;
 

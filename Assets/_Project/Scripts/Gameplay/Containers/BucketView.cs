@@ -85,6 +85,19 @@ namespace SandSort.Gameplay.Containers
 
         private Sequence _activeSequence;
         private Tweener _moveTweener;
+        private Tweener _holoSheenTweener;
+        private float _holoSheenAmount = 0f;
+
+        public void TriggerHoloSheenFlash(float peakAmount = 0.85f, float duration = 0.28f)
+        {
+            _holoSheenTweener?.Kill();
+            _holoSheenAmount = peakAmount;
+            _holoSheenTweener = DOTween.To(() => _holoSheenAmount, x =>
+            {
+                _holoSheenAmount = x;
+                ApplyColorProperties(_currentCount > 0 ? (float)_currentCount / Mathf.Max(1, _bucketData.MaxCapacity) : 0f);
+            }, 0f, duration).SetEase(Ease.OutQuad);
+        }
 
         private BucketData _bucketData;
         private Color32 _bucketColor;
@@ -94,6 +107,24 @@ namespace SandSort.Gameplay.Containers
         private bool _isMysteryHidden;
         private bool _isOnConveyor;
         private bool _isUnderCornerTunnel;
+
+        private static Material _sharedSandFillMaterial;
+
+        private const int SandSegments = 24;
+        private float _sandBottomZ;
+        private float _sandTopZ;
+        private float _sandBottomRadius;
+        private float _sandTopRadius;
+        private float _sandCenterX;
+        private float _sandCenterY;
+
+        private Transform _sandFillTransform;
+        private MeshFilter _sandFillMeshFilter;
+        private MeshRenderer _sandFillRenderer;
+        private Mesh _sandFillMesh;
+        private Vector3[] _sandFillVertices;
+        private MaterialPropertyBlock _sandFillPropBlock;
+
 
         public Transform CachedTransform => _transform != null ? _transform : (_transform = transform);
         public BucketData Data => _bucketData;
@@ -162,7 +193,7 @@ namespace SandSort.Gameplay.Containers
                 MeshRenderer r = allRenderers[i];
                 if (r == null) continue;
                 if (r.GetComponent<TextMeshPro>() != null) continue;
-                if (r.gameObject.name == "CapacityLabel" || r.gameObject.name == "FillIndicator") continue;
+                if (r.gameObject.name == "CapacityLabel" || r.gameObject.name == "FillIndicator" || r.gameObject.name == "SandFillSurface") continue;
 
                 r.shadowCastingMode = ShadowCastingMode.Off;
                 r.receiveShadows = false;
@@ -191,7 +222,7 @@ namespace SandSort.Gameplay.Containers
                 {
                     Transform child = _transform.GetChild(i);
                     if (child == modelPivot) continue;
-                    if (child.name == "CapacityLabel" || child.name == "FillIndicator") continue;
+                    if (child.name == "CapacityLabel" || child.name == "FillIndicator" || child.name == "SandFillSurface") continue;
                     if (child.GetComponent<TextMeshPro>() != null) continue;
                     directModelChildren.Add(child);
                 }
@@ -235,6 +266,11 @@ namespace SandSort.Gameplay.Containers
                         }
                     }
                 }
+            }
+
+            if (_bucketBodyTransform != null)
+            {
+                EnsureSandFillObject();
             }
 
             // 3a. Tilt the unified ModelPivot (Bucket body + Handle locked together as one rigid piece!)
@@ -316,23 +352,45 @@ namespace SandSort.Gameplay.Containers
                 float frontZ = worldBounds.size.sqrMagnitude > 0.00001f
                     ? (worldBounds.min.z - 0.06f)
                     : (_transform.position.z - 0.30f);
+
+                // Use the exact horizontal (X) bounds center of the bucket body mesh (ignoring handle asymmetry)
+                float bodyCenterX = _transform.position.x;
+                if (_bucketBodyTransform != null)
+                {
+                    MeshRenderer bodyMr = _bucketBodyTransform.GetComponent<MeshRenderer>();
+                    if (bodyMr != null) bodyCenterX = bodyMr.bounds.center.x;
+                }
+                else if (_meshRenderers.Count > 0 && _meshRenderers[0] != null)
+                {
+                    bodyCenterX = _meshRenderers[0].bounds.center.x;
+                }
+
                 // Position the percentage label on the lower-front body below the open circular rim (exact match to screenshot!)
-                Vector3 labelWorldPos = new Vector3(_transform.position.x, _transform.position.y - 0.13f, frontZ);
+                Vector3 labelWorldPos = new Vector3(bodyCenterX, _transform.position.y - 0.13f, frontZ);
 
                 textTr.position = labelWorldPos;
                 textTr.rotation = Quaternion.identity;
                 textTr.localScale = new Vector3(invScaleX, invScaleY, invScaleZ);
+
+                // Ensure RectTransform pivot is dead-center (0.5, 0.5) so center-alignment aligns to bucket axis
+                RectTransform rt = _capacityText.rectTransform;
+                if (rt != null)
+                {
+                    rt.pivot = new Vector2(0.5f, 0.5f);
+                    rt.sizeDelta = new Vector2(2.2f, 1.0f);
+                }
+
                 _labelBaseLocalPos = textTr.localPosition;
                 _labelBaseCaptured = true;
 
-                _capacityText.alignment = TextAlignmentOptions.Center;
+                // CenterGeoAligned centers on actual glyph vertex geometry rather than font advance/sidebearings
+                _capacityText.alignment = TextAlignmentOptions.CenterGeoAligned;
                 _capacityText.fontSize = 1.75f;
                 _capacityText.fontStyle = FontStyles.Bold;
                 _capacityText.color = Color.white;
                 _capacityText.outlineWidth = 0.28f;
                 _capacityText.outlineColor = new Color32(14, 12, 28, 255);
                 _capacityText.textWrappingMode = TextWrappingModes.NoWrap;
-                _capacityText.rectTransform.sizeDelta = new Vector2(2.2f, 1.0f);
 
                 MeshRenderer textRenderer = _capacityText.GetComponent<MeshRenderer>();
                 if (textRenderer != null)
@@ -350,29 +408,46 @@ namespace SandSort.Gameplay.Containers
             {
                 Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
                 if (litShader == null) litShader = Shader.Find("Standard");
-                _sharedPlasticBucketMaterial = new Material(litShader)
+                if (litShader == null && renderer != null && renderer.sharedMaterial != null)
                 {
-                    name = "Mat_PlasticBucket_Shared",
-                    enableInstancing = true
-                };
-                if (_sharedPlasticBucketMaterial.HasProperty("_Smoothness"))
+                    litShader = renderer.sharedMaterial.shader;
+                }
+
+                if (litShader != null)
                 {
-                    _sharedPlasticBucketMaterial.SetFloat("_Smoothness", 0.62f);
+                    _sharedPlasticBucketMaterial = new Material(litShader)
+                    {
+                        name = "Mat_PlasticBucket_Shared",
+                        enableInstancing = true
+                    };
+                    if (_sharedPlasticBucketMaterial.HasProperty("_Smoothness"))
+                    {
+                        _sharedPlasticBucketMaterial.SetFloat("_Smoothness", 0.62f);
+                    }
+                }
+                else if (renderer != null && renderer.sharedMaterial != null)
+                {
+                    _sharedPlasticBucketMaterial = new Material(renderer.sharedMaterial);
+                    _sharedPlasticBucketMaterial.enableInstancing = true;
                 }
             }
 
-            Material[] mats = renderer.sharedMaterials;
-            if (mats == null || mats.Length <= 1)
+            if (_sharedPlasticBucketMaterial != null && renderer != null)
             {
-                renderer.sharedMaterial = _sharedPlasticBucketMaterial;
-            }
-            else
-            {
-                for (int i = 0; i < mats.Length; i++)
+                Material[] mats = renderer.sharedMaterials;
+                if (mats == null || mats.Length <= 1)
                 {
-                    mats[i] = _sharedPlasticBucketMaterial;
+                    renderer.sharedMaterial = _sharedPlasticBucketMaterial;
                 }
-                renderer.sharedMaterials = mats;
+                else
+                {
+                    for (int i = 0; i < mats.Length; i++)
+                    {
+                        mats[i] = _sharedPlasticBucketMaterial;
+                    }
+                    renderer.sharedMaterials = mats;
+                }
+
             }
         }
 
@@ -461,6 +536,14 @@ namespace SandSort.Gameplay.Containers
             }
 
             ApplyColorProperties(ratio);
+            UpdateSandFillVisual(ratio);
+
+            if (_sandFillTransform != null && _sandFillTransform.gameObject.activeSelf)
+            {
+                _sandFillTransform.DOKill(true);
+                _sandFillTransform.localScale = Vector3.one;
+                _sandFillTransform.DOPunchScale(new Vector3(0.025f, 0.025f, 0.015f), 0.10f, 3, 0.5f);
+            }
         }
 
         private void RefreshLabelAndColor(float fillRatio)
@@ -491,6 +574,7 @@ namespace SandSort.Gameplay.Containers
                 else if (_isMysteryHidden)
                 {
                     ApplyLabelPlacement(MysteryOffset);
+                    _capacityText.alignment = TextAlignmentOptions.CenterGeoAligned;
                     _capacityText.fontSize = MysteryFontSize;
                     _capacityText.SetText("?");
                 }
@@ -502,6 +586,7 @@ namespace SandSort.Gameplay.Containers
             }
 
             ApplyColorProperties(fillRatio);
+            UpdateSandFillVisual(fillRatio);
         }
 
         private void ApplyLabelPlacement(Vector3 offset)
@@ -529,6 +614,265 @@ namespace SandSort.Gameplay.Containers
             s_labelVersion++;
         }
 #endif
+
+        private void EnsureSandFillObject()
+        {
+            if (_bucketBodyTransform == null) return;
+
+            if (_sandFillTransform == null)
+            {
+                Transform existing = _bucketBodyTransform.Find("SandFillSurface");
+                if (existing != null)
+                {
+                    _sandFillTransform = existing;
+                }
+            }
+
+            if (_sandFillTransform == null)
+            {
+                GameObject fillGo = new GameObject("SandFillSurface");
+                fillGo.transform.SetParent(_bucketBodyTransform, false);
+                _sandFillTransform = fillGo.transform;
+            }
+
+            _sandFillTransform.localPosition = Vector3.zero;
+            _sandFillTransform.localRotation = Quaternion.identity;
+            _sandFillTransform.localScale = Vector3.one;
+
+            if (_sandFillMeshFilter == null)
+            {
+                _sandFillMeshFilter = _sandFillTransform.GetComponent<MeshFilter>();
+                if (_sandFillMeshFilter == null) _sandFillMeshFilter = _sandFillTransform.gameObject.AddComponent<MeshFilter>();
+            }
+
+            if (_sandFillRenderer == null)
+            {
+                _sandFillRenderer = _sandFillTransform.GetComponent<MeshRenderer>();
+                if (_sandFillRenderer == null) _sandFillRenderer = _sandFillTransform.gameObject.AddComponent<MeshRenderer>();
+                _sandFillRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                _sandFillRenderer.receiveShadows = false;
+            }
+
+            EnsureSandFillMaterial(_sandFillRenderer);
+
+            if (_sandFillMesh == null || _sandFillMeshFilter.sharedMesh != _sandFillMesh)
+            {
+                InitializeProceduralSandMesh();
+            }
+        }
+
+        private static void EnsureSandFillMaterial(MeshRenderer renderer)
+        {
+            if (_sharedSandFillMaterial == null)
+            {
+                Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
+                if (litShader == null) litShader = Shader.Find("Standard");
+                if (litShader == null) litShader = Shader.Find("Universal Render Pipeline/Unlit");
+
+                if (litShader != null)
+                {
+                    _sharedSandFillMaterial = new Material(litShader)
+                    {
+                        name = "Mat_SandFill_Shared",
+                        enableInstancing = true
+                    };
+                    if (_sharedSandFillMaterial.HasProperty("_Smoothness")) _sharedSandFillMaterial.SetFloat("_Smoothness", 0.04f);
+                    if (_sharedSandFillMaterial.HasProperty("_Glossiness")) _sharedSandFillMaterial.SetFloat("_Glossiness", 0.04f);
+                }
+            }
+
+            if (_sharedSandFillMaterial != null && renderer != null)
+            {
+                renderer.sharedMaterial = _sharedSandFillMaterial;
+            }
+        }
+
+        private void InitializeProceduralSandMesh()
+        {
+            if (_sandFillMesh == null)
+            {
+                _sandFillMesh = new Mesh
+                {
+                    name = "Mesh_ProceduralSandFill",
+                    hideFlags = HideFlags.DontSave
+                };
+            }
+
+            MeshFilter bodyMf = _bucketBodyTransform != null ? _bucketBodyTransform.GetComponent<MeshFilter>() : null;
+            Bounds b = (bodyMf != null && bodyMf.sharedMesh != null)
+                ? bodyMf.sharedMesh.bounds
+                : new Bounds(Vector3.zero, new Vector3(0.01264f, 0.01264f, 0.01269f));
+
+            _sandBottomZ = b.min.z + b.size.z * 0.065f;
+            _sandTopZ = b.min.z + b.size.z * 0.930f;
+            _sandBottomRadius = b.extents.x * 0.690f;
+            _sandTopRadius = b.extents.x * 0.880f;
+            _sandCenterX = b.center.x;
+            _sandCenterY = b.center.y;
+
+            int totalVerts = 1 + SandSegments + SandSegments + SandSegments + 1 + SandSegments;
+            if (_sandFillVertices == null || _sandFillVertices.Length != totalVerts)
+            {
+                _sandFillVertices = new Vector3[totalVerts];
+            }
+
+            Vector3[] normals = new Vector3[totalVerts];
+            Vector2[] uvs = new Vector2[totalVerts];
+            List<int> tris = new List<int>(96 * 3);
+
+            // 1. Top flat disk: center + SandSegments perimeter
+            int topCenterIdx = 0;
+            _sandFillVertices[topCenterIdx] = new Vector3(_sandCenterX, _sandCenterY, _sandBottomZ);
+            normals[topCenterIdx] = Vector3.forward;
+            uvs[topCenterIdx] = new Vector2(0.5f, 0.5f);
+
+            int topRimStart = 1;
+            for (int i = 0; i < SandSegments; i++)
+            {
+                float angle = (2f * Mathf.PI * i) / SandSegments;
+                float cosA = Mathf.Cos(angle);
+                float sinA = Mathf.Sin(angle);
+                int idx = topRimStart + i;
+                _sandFillVertices[idx] = new Vector3(_sandCenterX + cosA * _sandBottomRadius, _sandCenterY + sinA * _sandBottomRadius, _sandBottomZ);
+                normals[idx] = Vector3.forward;
+                uvs[idx] = new Vector2(0.5f + 0.5f * cosA, 0.5f + 0.5f * sinA);
+            }
+
+            for (int i = 0; i < SandSegments; i++)
+            {
+                int next = (i + 1) % SandSegments;
+                tris.Add(topCenterIdx);
+                tris.Add(topRimStart + i);
+                tris.Add(topRimStart + next);
+            }
+
+            // 2. Side wall: SandSegments top + SandSegments bottom
+            int sideTopStart = topRimStart + SandSegments;
+            int sideBotStart = sideTopStart + SandSegments;
+
+            for (int i = 0; i < SandSegments; i++)
+            {
+                float angle = (2f * Mathf.PI * i) / SandSegments;
+                float cosA = Mathf.Cos(angle);
+                float sinA = Mathf.Sin(angle);
+                Vector3 radialNorm = new Vector3(cosA, sinA, 0f);
+
+                _sandFillVertices[sideTopStart + i] = new Vector3(_sandCenterX + cosA * _sandBottomRadius, _sandCenterY + sinA * _sandBottomRadius, _sandBottomZ);
+                normals[sideTopStart + i] = radialNorm;
+                uvs[sideTopStart + i] = new Vector2((float)i / SandSegments, 1f);
+
+                _sandFillVertices[sideBotStart + i] = new Vector3(_sandCenterX + cosA * _sandBottomRadius, _sandCenterY + sinA * _sandBottomRadius, _sandBottomZ);
+                normals[sideBotStart + i] = radialNorm;
+                uvs[sideBotStart + i] = new Vector2((float)i / SandSegments, 0f);
+            }
+
+            for (int i = 0; i < SandSegments; i++)
+            {
+                int next = (i + 1) % SandSegments;
+                int t0 = sideTopStart + i;
+                int t1 = sideTopStart + next;
+                int b0 = sideBotStart + i;
+                int b1 = sideBotStart + next;
+
+                tris.Add(t0);
+                tris.Add(b0);
+                tris.Add(b1);
+
+                tris.Add(t0);
+                tris.Add(b1);
+                tris.Add(t1);
+            }
+
+            // 3. Bottom disk
+            int botCenterIdx = sideBotStart + SandSegments;
+            _sandFillVertices[botCenterIdx] = new Vector3(_sandCenterX, _sandCenterY, _sandBottomZ);
+            normals[botCenterIdx] = Vector3.back;
+            uvs[botCenterIdx] = new Vector2(0.5f, 0.5f);
+
+            int botRimStart = botCenterIdx + 1;
+            for (int i = 0; i < SandSegments; i++)
+            {
+                float angle = (2f * Mathf.PI * i) / SandSegments;
+                float cosA = Mathf.Cos(angle);
+                float sinA = Mathf.Sin(angle);
+                int idx = botRimStart + i;
+                _sandFillVertices[idx] = new Vector3(_sandCenterX + cosA * _sandBottomRadius, _sandCenterY + sinA * _sandBottomRadius, _sandBottomZ);
+                normals[idx] = Vector3.back;
+                uvs[idx] = new Vector2(0.5f + 0.5f * cosA, 0.5f + 0.5f * sinA);
+            }
+
+            for (int i = 0; i < SandSegments; i++)
+            {
+                int next = (i + 1) % SandSegments;
+                tris.Add(botCenterIdx);
+                tris.Add(botRimStart + next);
+                tris.Add(botRimStart + i);
+            }
+
+            _sandFillMesh.Clear();
+            _sandFillMesh.vertices = _sandFillVertices;
+            _sandFillMesh.normals = normals;
+            _sandFillMesh.uv = uvs;
+            _sandFillMesh.triangles = tris.ToArray();
+
+            if (_sandFillMeshFilter != null)
+            {
+                _sandFillMeshFilter.sharedMesh = _sandFillMesh;
+            }
+        }
+
+        private void UpdateSandFillVisual(float fillRatio)
+        {
+            EnsureSandFillObject();
+            if (_sandFillTransform == null || _sandFillMeshFilter == null) return;
+
+            if (fillRatio <= 0.005f || (_isMysteryHidden && !_isOnConveyor))
+            {
+                _sandFillTransform.gameObject.SetActive(false);
+                return;
+            }
+
+            _sandFillTransform.gameObject.SetActive(true);
+
+            float clampedRatio = Mathf.Clamp01(fillRatio);
+            float zSurface = Mathf.Lerp(_sandBottomZ, _sandTopZ, clampedRatio);
+            float rSurface = Mathf.Lerp(_sandBottomRadius, _sandTopRadius, clampedRatio);
+
+            if (_sandFillVertices == null || _sandFillVertices.Length < 98)
+            {
+                InitializeProceduralSandMesh();
+            }
+
+            // Update top center
+            _sandFillVertices[0] = new Vector3(_sandCenterX, _sandCenterY, zSurface);
+
+            int topRimStart = 1;
+            int sideTopStart = topRimStart + SandSegments;
+
+            for (int i = 0; i < SandSegments; i++)
+            {
+                float angle = (2f * Mathf.PI * i) / SandSegments;
+                float cosA = Mathf.Cos(angle);
+                float sinA = Mathf.Sin(angle);
+                Vector3 vTop = new Vector3(_sandCenterX + cosA * rSurface, _sandCenterY + sinA * rSurface, zSurface);
+
+                _sandFillVertices[topRimStart + i] = vTop;
+                _sandFillVertices[sideTopStart + i] = vTop;
+            }
+
+            _sandFillMesh.vertices = _sandFillVertices;
+            _sandFillMesh.RecalculateBounds();
+
+            if (_sandFillRenderer != null)
+            {
+                if (_sandFillPropBlock == null) _sandFillPropBlock = new MaterialPropertyBlock();
+                _sandFillRenderer.GetPropertyBlock(_sandFillPropBlock);
+                Color c = _bucketColor;
+                _sandFillPropBlock.SetColor(GameConstants.BaseColorShaderId, c);
+                _sandFillPropBlock.SetColor(GameConstants.MainColorShaderId, c);
+                _sandFillRenderer.SetPropertyBlock(_sandFillPropBlock);
+            }
+        }
 
         private void ApplyColorProperties(float fillRatio)
         {
@@ -558,8 +902,28 @@ namespace SandSort.Gameplay.Containers
             }
         }
 
+        /// <summary>
+        /// Bucket rolls out of the depot gate: starts small at the tunnel mouth and grows while sliding into its queue slot.
+        /// </summary>
+        public void AnimateEmergeFromDepot(Vector3 startWorldPos, Vector3 targetWorldPos, float duration = 0.40f)
+        {
+            _moveTweener?.Kill();
+            _activeSequence?.Kill();
+            _transform.position = startWorldPos;
+            _transform.localScale = _baseScale * 0.35f;
+
+            _activeSequence = DOTween.Sequence();
+            _activeSequence.Append(_transform.DOMove(targetWorldPos, duration).SetEase(Ease.OutCubic));
+            _activeSequence.Join(_transform.DOScale(_baseScale, duration).SetEase(Ease.OutBack));
+            _activeSequence.OnComplete(() => { _transform.localScale = _baseScale; });
+        }
+
         public void AnimateQueueShift(Vector3 targetWorldPos, float duration = 0.18f)
         {
+            if (_activeSequence != null && _activeSequence.IsActive())
+            {
+                _activeSequence.Kill(true);
+            }
             _moveTweener?.Kill();
             _moveTweener = CachedTransform
                 .DOMove(targetWorldPos, duration)

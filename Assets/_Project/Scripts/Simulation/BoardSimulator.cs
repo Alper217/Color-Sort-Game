@@ -78,12 +78,13 @@ namespace SandSort.Simulation
             int targetH = overrideResolution > 8 ? overrideResolution : levelData.Height;
             int colCount = levelData.Columns != null ? levelData.Columns.Length : 0;
 
-            EnsureCapacity(targetW, targetH, levelData.ActiveDockCapacity, colCount);
+            int dockCap = Math.Clamp(levelData.ActiveDockCapacity, 2, 6);
+            EnsureCapacity(targetW, targetH, dockCap, colCount);
 
             _width = targetW;
             _height = targetH;
             _gravityMode = levelData.Gravity;
-            _dockCapacity = levelData.ActiveDockCapacity;
+            _dockCapacity = dockCap;
             _columnCount = colCount;
             _stepTick = 0;
             _moveCount = 0;
@@ -527,7 +528,7 @@ namespace SandSort.Simulation
         public bool ConfirmGrainArrival(int dockSlotIndex, out ActiveDockSlotState updatedState, out bool bucketCompleted)
         {
             bucketCompleted = false;
-            if (dockSlotIndex < 0 || dockSlotIndex >= _dockCapacity || !_dockSlots[dockSlotIndex].IsOccupied)
+            if (_dockSlots == null || dockSlotIndex < 0 || dockSlotIndex >= _dockCapacity || dockSlotIndex >= _dockSlots.Length || !_dockSlots[dockSlotIndex].IsOccupied)
             {
                 updatedState = default;
                 return false;

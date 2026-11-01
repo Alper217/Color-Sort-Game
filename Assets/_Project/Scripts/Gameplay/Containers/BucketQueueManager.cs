@@ -52,6 +52,7 @@ namespace SandSort.Gameplay.Containers
 
         private GameObject _platformRoot;
         private GameObject[] _frontHighlights = Array.Empty<GameObject>();
+        private Vector3[] _depotSpawnWorldPos = Array.Empty<Vector3>();
         private Material _platformPlateMat;
         private Material _platformWallMat;
         private Material _platformSlotMat;
@@ -62,6 +63,7 @@ namespace SandSort.Gameplay.Containers
         private int[] _columnHeadPointers = Array.Empty<int>();
         private int[] _columnTotalCounts = Array.Empty<int>();
         private int _columnCount;
+        private int _activeMysteryStartRow = 1;
 
         private BoardSimulator _simulator;
         private DockManager _dockManager;
@@ -145,6 +147,7 @@ namespace SandSort.Gameplay.Containers
             _dockManager = dockManager;
             _columnCount = simulator.ColumnCount;
             _maxVisibleRowsPerColumn = 3;
+            _activeMysteryStartRow = (levelData != null && levelData.MysteryBucketStartRow > 0) ? levelData.MysteryBucketStartRow : _mysteryBucketStartRow;
 
             if (_columnViews.Length < _columnCount)
             {
@@ -175,7 +178,7 @@ namespace SandSort.Gameplay.Containers
                     vt.rotation = Quaternion.identity;
 
                     bool isFront = (b == 0);
-                    bool isMystery = (b >= _mysteryBucketStartRow);
+                    bool isMystery = (b >= _activeMysteryStartRow);
                     view.Setup(bucketData, levelData.GetColor(bucketData.ColorId), c, isFront, isMystery);
                     view.gameObject.SetActive(b < _maxVisibleRowsPerColumn);
                     _columnViews[c][b] = view;
@@ -268,12 +271,21 @@ namespace SandSort.Gameplay.Containers
 
                 int visualOrderFromFront = b - newHead;
                 bool isVisible = visualOrderFromFront < _maxVisibleRowsPerColumn;
-                bool isMystery = visualOrderFromFront >= _mysteryBucketStartRow;
+                bool isMystery = visualOrderFromFront >= _activeMysteryStartRow;
+                bool wasVisible = remainingView.gameObject.activeSelf;
                 remainingView.gameObject.SetActive(isVisible);
                 remainingView.SetQueueState(columnIndex, visualOrderFromFront == 0, isMystery);
 
                 Vector3 targetPos = GetQueueSlotWorldPosition(columnIndex, visualOrderFromFront);
-                remainingView.AnimateQueueShift(targetPos);
+                if (isVisible && !wasVisible && columnIndex < _depotSpawnWorldPos.Length && _depotSpawnWorldPos[columnIndex] != Vector3.zero)
+                {
+                    // Newly revealed bucket: rolls out of the depot gate into the last row.
+                    remainingView.AnimateEmergeFromDepot(_depotSpawnWorldPos[columnIndex], targetPos);
+                }
+                else
+                {
+                    remainingView.AnimateQueueShift(targetPos);
+                }
             }
 
             EventBus<BucketDeployedToDockEvent>.Publish(
@@ -335,6 +347,7 @@ namespace SandSort.Gameplay.Containers
         {
             if (_platformRoot != null) Destroy(_platformRoot);
             _frontHighlights = Array.Empty<GameObject>();
+            _depotSpawnWorldPos = Array.Empty<Vector3>();
             if (!_buildQueuePlatform || _columnCount <= 0) return;
 
             EnsurePlatformMaterials();
@@ -398,7 +411,7 @@ namespace SandSort.Gameplay.Containers
             float slotH = pitchV * 0.92f;
             float margin = _platformMargin * f0;
             float wall = _platformWallThickness * f0;
-            float wallB = wall * 1.8f; // thicker bottom wall hosts the bucket entrances
+            float wallB = Mathf.Max(wall * 1.8f, slotH * 0.62f); // thicker bottom wall hosts the depot entrances
 
             float uMin = float.MaxValue, uMax = float.MinValue, vMin = float.MaxValue, vMax = float.MinValue;
             for (int c = 0; c < _columnCount; c++)
@@ -439,6 +452,7 @@ namespace SandSort.Gameplay.Containers
 
             // Slots, front highlights, and dark bucket entrances embedded in the bottom wall
             _frontHighlights = new GameObject[_columnCount];
+            _depotSpawnWorldPos = new Vector3[_columnCount];
             float frameT = 0.04f * f0;
             for (int c = 0; c < _columnCount; c++)
             {
@@ -460,10 +474,37 @@ namespace SandSort.Gameplay.Containers
                 CreatePlatformBox("Right", hl.transform, new Vector3(fu + fw * 0.5f, fv, hz), new Vector3(frameT, fh, 0.02f), _platformHighlightMat);
                 _frontHighlights[c] = hl;
 
-                // Dark entrance (same visual language as the conveyor tunnel mouths) under the column's last row
+                // Depot gate: a light-grey housing that stands proud of the bottom wall (like the conveyor corner blocks)
+                // with a dark tunnel mouth, a hood lip above and a dark floor sill. Buckets emerge from here.
                 float eu = su[c, rows - 1];
-                CreatePlatformBox($"Entrance_{c}", root, new Vector3(eu, bottomWallV, wz - 0.08f), new Vector3(slotW * _entranceWidthRatio, wallB * 0.5f, 0.02f), _platformMouthMat);
-            }
+                float housingW = slotW * 1.06f;
+                float housingZ = -0.12f;
+                CreatePlatformBox($"DepotHousing_{c}", root, new Vector3(eu, bottomWallV, housingZ), new Vector3(housingW, wallB, 0.26f), _platformWallMat);
+
+                float mouthW = housingW * _entranceWidthRatio;
+                float mouthH = wallB * 0.58f;
+                float mouthV = bottomWallV - wallB * 0.08f;
+                float frontZ = housingZ - 0.13f;
+                CreatePlatformBox($"DepotMouth_{c}", root, new Vector3(eu, mouthV, frontZ - 0.005f), new Vector3(mouthW, mouthH, 0.02f), _platformMouthMat);
+                // soft inner shadow strip along the top of the opening for depth
+                CreatePlatformBox($"DepotMouthShade_{c}", root, new Vector3(eu, mouthV + mouthH * 0.5f - mouthH * 0.12f, frontZ - 0.012f), new Vector3(mouthW, mouthH * 0.24f, 0.02f), _platformSlotMat);
+                // dark sill so the opening reads as a tunnel floor
+                CreatePlatformBox($"DepotSill_{c}", root, new Vector3(eu, mouthV - mouthH * 0.5f - wallB * 0.03f, frontZ - 0.008f), new Vector3(mouthW * 1.04f, wallB * 0.06f, 0.025f), _platformPlateMat);
+
+                // World point (on the bucket plane, along the camera ray through the mouth) where the bucket emerges from
+                Vector3 mouthWorld = root.TransformPoint(new Vector3(eu, mouthV, frontZ));
+                float bucketPlaneZ = firstB.z;
+                if (persp)
+                {
+                    Vector3 camPos = cam.transform.position;
+                    Vector3 rayDir = (mouthWorld - camPos).normalized;
+                    float tPlane = Mathf.Abs(rayDir.z) > 1e-4f ? (bucketPlaneZ - camPos.z) / rayDir.z : 0f;
+                    _depotSpawnWorldPos[c] = camPos + rayDir * tPlane;
+                }
+                else
+                {
+                    _depotSpawnWorldPos[c] = new Vector3(mouthWorld.x, mouthWorld.y, bucketPlaneZ);
+                }            }
         }
         /// <summary>
         /// Offset between the front bucket's pivot and the visual center of its mesh (XY, world space),

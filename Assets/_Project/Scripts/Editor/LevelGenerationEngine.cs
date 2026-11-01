@@ -40,6 +40,91 @@ namespace SandSort.EditorTools
             public Color32[] Palette;
         }
 
+        /// <summary>
+        /// Progressive difficulty settings derived from a single Difficulty Index D (0..1).
+        /// D rises along the campaign (TotalLevels) with an ease curve plus a "sawtooth":
+        /// every 10th level is a BOSS (+D), every 5th level is a BREATHER (-D).
+        /// D drives: columns, rows per column (bucket depth), bucket size, dock size,
+        /// scrambling and how many front rows are visible before '?' buckets start.
+        /// </summary>
+        public struct DifficultyProfile
+        {
+            public float DifficultyIndex;
+            public int GridResolution; // 24x24 for tutorial/early, scaling to 48x48
+            public int ColumnCount;
+            public int RowsPerColumn;
+            public int ActiveDockCapacity;
+            public int MinBucketCapacity;
+            public int MaxBucketCapacity;
+            public float ScrambleFactor;
+            public int MysteryBucketStartRow; // 99 = none; N = rows 0..N-1 visible, rows >= N are '?' (1 = only front visible)
+            public float SandFillSpeedMultiplier; // Turbo speed for early tutorial levels (3.8x), scaling to standard fast (2.4x)
+        }
+
+        /// <summary>Campaign length. Set to 50 or 100; the whole curve stretches to fit.</summary>
+        public const int TotalLevels = 100;
+
+        public static float ComputeDifficultyIndex(int levelIndex, int totalLevels = TotalLevels)
+        {
+            int lvl = Mathf.Max(1, levelIndex);
+            float p = Mathf.Clamp01((lvl - 1) / (float)Mathf.Max(1, totalLevels - 1));
+
+            // 50% linear + 50% smoothstep: gentle start, steeper middle, flat-ish top.
+            float smooth = p * p * (3f - 2f * p);
+            float d = 0.5f * p + 0.5f * smooth;
+
+            // Sawtooth only after the tutorial phase (first 4 levels stay clean).
+            if (lvl > 4)
+            {
+                if (lvl % 10 == 0) d += 0.07f;       // boss
+                else if (lvl % 5 == 0) d -= 0.06f;   // breather
+            }
+            return Mathf.Clamp01(d);
+        }
+
+        public static DifficultyProfile GetDifficultyProfile(int levelIndex, int totalLevels = TotalLevels, int totalGrains = 0)
+        {
+            float d = ComputeDifficultyIndex(levelIndex, totalLevels);
+
+            // Progressive grid size: 24x24 (576 grains, quick 20s finish) -> 48x48
+            int gridRes = (levelIndex == 1) ? 24 : (levelIndex == 2 ? 30 : (levelIndex <= 4 ? 36 : Mathf.RoundToInt(Mathf.Lerp(36f, 48f, d))));
+            if (totalGrains <= 0) totalGrains = gridRes * gridRes;
+
+            int columns = d < 0.12f ? 2 : d < 0.35f ? 3 : d < 0.65f ? 4 : 5;
+            int rows = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(2f, 12f, d)), 2, 14);
+            int dock = d < 0.30f ? 5 : d < 0.85f ? 4 : 3;
+
+            // Bucket size follows from rows x columns => same picture, more buckets as D grows.
+            float avgCap = totalGrains / (float)(columns * rows);
+            int minCap = Mathf.Max(10, Mathf.RoundToInt(avgCap * 0.88f));
+            int maxCap = Mathf.Max(minCap, Mathf.RoundToInt(avgCap * 1.12f));
+
+            // Visible front rows shrink from 5 to 1 as D grows (none hidden at the very start).
+            int mystery = 99;
+            if (d >= 0.15f)
+            {
+                float k = Mathf.InverseLerp(0.15f, 0.85f, d);
+                mystery = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(5f, 1f, k)), 1, 5);
+            }
+
+            // Turbo fill speed for early levels (e.g. Level 1 = 3.8x for ultra snappy feel), scaling to standard fast 2.4x
+            float speedMult = (levelIndex == 1) ? 3.8f : (levelIndex == 2 ? 3.2f : (levelIndex <= 4 ? 2.8f : 2.4f));
+
+            return new DifficultyProfile
+            {
+                DifficultyIndex = d,
+                GridResolution = gridRes,
+                ColumnCount = columns,
+                RowsPerColumn = rows,
+                ActiveDockCapacity = dock,
+                MinBucketCapacity = minCap,
+                MaxBucketCapacity = maxCap,
+                ScrambleFactor = Mathf.Lerp(0f, 0.55f, d),
+                MysteryBucketStartRow = mystery,
+                SandFillSpeedMultiplier = speedMult
+            };
+        }
+
         public static void PopulateLevelFromTexture(
             LevelDataSO targetLevel,
             Texture2D sourceTexture,
@@ -120,7 +205,7 @@ namespace SandSort.EditorTools
             {
                 case PixelArtPreset.PixelHeart:
                 {
-                    int bgSand = (ny < 0f) ? 1 : 5;
+                    const int bgSand = 1; // Pure White / Silver Sand
 
                     float hx = nx * 1.18f;
                     float hy = ny * 1.18f - 0.08f;
@@ -128,9 +213,7 @@ namespace SandSort.EditorTools
                     float heartVal = a * a * a - (hx * hx) * (hy * hy * hy);
                     if (heartVal > 0f) return bgSand;
 
-                    if (heartVal > -0.10f) return 0; // Coral Red outer heart
-                    if (hy > 0.12f && hx < -0.12f) return 2; // Gold shine
-                    return 4; // Amethyst Purple core
+                    return 0; // Vibrant Coral Red Heart (Tutorial Level 1: 2 clean colors, 100% smooth bucket completions!)
                 }
 
                 case PixelArtPreset.RoyalCrown:
@@ -280,6 +363,47 @@ namespace SandSort.EditorTools
                     else
                     {
                         runningColorAccumulator[colorId] = count;
+                    }
+                }
+
+                // If an accumulated color has NO grains left at the bottom exposed row (y=0),
+                // flush it now so every bucket fills cleanly to 100% on its contiguous wave!
+                if ((tick & 1) == 0)
+                {
+                    List<int> toFlush = null;
+                    foreach (KeyValuePair<int, int> kvp in runningColorAccumulator)
+                    {
+                        int cId = kvp.Key;
+                        int cCount = kvp.Value;
+                        if (cCount <= 0) continue;
+
+                        bool stillExposed = false;
+                        for (int x = 0; x < width; x++)
+                        {
+                            if (colHeights[x] > 0 && simGrid[x] == cId)
+                            {
+                                stillExposed = true;
+                                break;
+                            }
+                        }
+
+                        if (!stillExposed && (cCount >= Mathf.Max(20, minCap / 2) || remaining <= 0))
+                        {
+                            if (toFlush == null) toFlush = new List<int>();
+                            toFlush.Add(cId);
+                        }
+                    }
+
+                    if (toFlush != null)
+                    {
+                        for (int f = 0; f < toFlush.Count; f++)
+                        {
+                            int cId = toFlush[f];
+                            int cCount = runningColorAccumulator[cId];
+                            chronologicalBuckets.Add(new BucketData(cId, cCount));
+                            runningColorAccumulator[cId] = 0;
+                            targetThresholdPerColor[cId] = rng.Next(minCap, maxCap + 1);
+                        }
                     }
                 }
 
@@ -442,19 +566,18 @@ namespace SandSort.EditorTools
         public static List<LevelDataSO> GenerateShowcasePortfolioLevels()
         {
             const string spritesFolder = "Assets/_Project/Art/PixelSprites";
-            const string levelsFolder = "Assets/_Project/Data/Levels";
+            const string levelsFolder = "Assets/Levels";
 
             EnsureFolderExists("Assets/_Project");
             EnsureFolderExists("Assets/_Project/Art");
             EnsureFolderExists(spritesFolder);
-            EnsureFolderExists("Assets/_Project/Data");
             EnsureFolderExists(levelsFolder);
 
             (PixelArtPreset preset, string title, int width, int height, GravityMode gravity, float scramble, int minCap, int maxCap, int bgId)[] specs =
             {
-                (PixelArtPreset.PixelHeart,  "Pixel Heart",  48, 48, GravityMode.CellularAutomata, 0.25f, 80, 100, 1),
-                (PixelArtPreset.RoyalCrown,  "Royal Crown",  48, 48, GravityMode.CellularAutomata, 0.35f, 65, 85,  4),
-                (PixelArtPreset.MagicPotion, "Magic Potion", 48, 48, GravityMode.CellularAutomata, 0.42f, 50, 70,  3)
+                (PixelArtPreset.PixelHeart,  "Pixel Heart",  24, 24, GravityMode.CellularAutomata, 0.00f, 40, 75, 1),
+                (PixelArtPreset.RoyalCrown,  "Royal Crown",  30, 30, GravityMode.CellularAutomata, 0.20f, 75,  110, 4),
+                (PixelArtPreset.MagicPotion, "Magic Potion", 38, 38, GravityMode.CellularAutomata, 0.35f, 55,  85,  3)
             };
 
             List<LevelDataSO> createdLevels = new List<LevelDataSO>(specs.Length);
@@ -498,16 +621,20 @@ namespace SandSort.EditorTools
                 levelSO.LevelIndex = levelNum;
                 levelSO.LevelTitle = spec.title;
 
+                DifficultyProfile diff = GetDifficultyProfile(levelNum);
+                levelSO.MysteryBucketStartRow = diff.MysteryBucketStartRow;
+                levelSO.SandFillSpeedMultiplier = diff.SandFillSpeedMultiplier;
+
                 GenerationConfig cfg = new GenerationConfig
                 {
                     Width = spec.width,
                     Height = spec.height,
                     Gravity = spec.gravity,
-                    ActiveDockCapacity = 4,
-                    ColumnCount = 4,
-                    MinBucketCapacity = spec.minCap,
-                    MaxBucketCapacity = spec.maxCap,
-                    ScrambleFactor = spec.scramble,
+                    ActiveDockCapacity = diff.ActiveDockCapacity,
+                    ColumnCount = diff.ColumnCount,
+                    MinBucketCapacity = diff.MinBucketCapacity,
+                    MaxBucketCapacity = diff.MaxBucketCapacity,
+                    ScrambleFactor = diff.ScrambleFactor,
                     RandomSeed = 100 + levelNum * 37,
                     FallbackBackgroundColorId = spec.bgId,
                     Palette = GameConstants.DefaultVibrantPalette

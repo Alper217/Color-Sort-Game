@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using SandSort.Core;
 using SandSort.Data;
 using SandSort.Simulation;
@@ -134,6 +134,8 @@ namespace SandSort.Gameplay.Grid
             // Prefer URP Unlit shader so spheres don't have dark 3D ball rims and fuse into fine sand!
             Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
             if (unlitShader == null) unlitShader = Shader.Find("Unlit/Color");
+            if (unlitShader == null && _baseGrainMaterial != null) unlitShader = _baseGrainMaterial.shader;
+
 
             _shadedInstancedMaterials = new Material[totalShadeBuckets];
             _shadeInstanceCounts = new int[totalShadeBuckets];
