@@ -3424,12 +3424,7 @@ MonoBehaviour:
   _levels:
   - {fileID: 11400000, guid: 79bb0f0c61f1db14080e04be156dea1f, type: 2}
   - {fileID: 11400000, guid: 1afb59311952cfa46896e723050be272, type: 2}
-  - {fileID: 11400000, guid: a108e02b0e8861541941edf5489ca46b, type: 2}
   - {fileID: 11400000, guid: c6cd6da8af2bf4148b382560f6696a4a, type: 2}
-  - {fileID: 11400000, guid: ee5dd82fd3e97244ca1b2b2735f57809, type: 2}
-  - {fileID: 11400000, guid: fbba144c74175794f9287772a73b299e, type: 2}
-  - {fileID: 11400000, guid: af8a9f935d45800498fea974fec14286, type: 2}
-  - {fileID: 11400000, guid: d53025bf086e9b14f897b69ac7b01f36, type: 2}
   _startingLevelIndex: 0
   _sandFillSpeedMultiplier: 2.4
   _extractionPassesPerStep: 2

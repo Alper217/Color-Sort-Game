@@ -575,10 +575,10 @@ namespace SandSort.EditorTools
                 EditorGUILayout.Space(2);
 
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.Label("Hazır Temalar:", EditorStyles.miniLabel, GUILayout.Width(80));
+                GUILayout.Label("Palet İşlemleri:", EditorStyles.miniLabel, GUILayout.Width(90));
 
                 GUI.backgroundColor = new Color(0.25f, 0.85f, 0.45f);
-                if (GUILayout.Button("🎨 Orijinal Renkler", EditorStyles.miniButton))
+                if (GUILayout.Button("🎨 Resmin Orijinal Renklerini Yükle", EditorStyles.miniButton))
                 {
                     if (LevelPaletteService.RestorePaletteFromSource(_workingPreviewLevel, _currentPalette, _sourceTexture, _levelIndex, _currentLoadedAsset))
                     {
@@ -586,31 +586,6 @@ namespace SandSort.EditorTools
                     }
                 }
                 GUI.backgroundColor = Color.white;
-
-                if (GUILayout.Button("Vibrant", EditorStyles.miniButton))
-                {
-                    _currentPalette.Clear();
-                    _currentPalette.AddRange(GameConstants.DefaultVibrantPalette);
-                    ApplyPaletteChangeLive();
-                }
-                if (GUILayout.Button("Pastel", EditorStyles.miniButton))
-                {
-                    _currentPalette.Clear();
-                    _currentPalette.AddRange(LevelPaletteService.PastelPalette);
-                    ApplyPaletteChangeLive();
-                }
-                if (GUILayout.Button("Neon", EditorStyles.miniButton))
-                {
-                    _currentPalette.Clear();
-                    _currentPalette.AddRange(LevelPaletteService.NeonPalette);
-                    ApplyPaletteChangeLive();
-                }
-                if (GUILayout.Button("Gün Batımı", EditorStyles.miniButton))
-                {
-                    _currentPalette.Clear();
-                    _currentPalette.AddRange(LevelPaletteService.SunsetPalette);
-                    ApplyPaletteChangeLive();
-                }
                 EditorGUILayout.EndHorizontal();
 
                 EditorGUILayout.Space(4);

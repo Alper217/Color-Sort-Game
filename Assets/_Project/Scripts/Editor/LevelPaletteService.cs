@@ -8,40 +8,12 @@ using UnityEngine;
 namespace SandSort.EditorTools
 {
     /// <summary>
-    /// Service for managing color palettes, preset themes, texture color extractions,
+    /// Service for managing color palettes, texture color extractions,
     /// and palette compaction / color removal in SandSort levels.
+    /// Resmin orijinal renkleri esas alınır; kullanıcı sadece manuel boyama ile renk değiştirebilir.
     /// </summary>
     public static class LevelPaletteService
     {
-        public static readonly Color32[] PastelPalette = new Color32[]
-        {
-            new Color32(255, 115, 160, 255), // Candy Pink
-            new Color32(110, 190, 255, 255), // Baby Blue
-            new Color32(255, 225, 90, 255),  // Banana Yellow
-            new Color32(125, 230, 140, 255), // Mint Green
-            new Color32(190, 140, 255, 255), // Lavender
-            new Color32(255, 165, 110, 255)  // Peach Orange
-        };
-
-        public static readonly Color32[] NeonPalette = new Color32[]
-        {
-            new Color32(255, 25, 115, 255),  // Neon Pink
-            new Color32(0, 245, 255, 255),   // Electric Cyan
-            new Color32(255, 245, 0, 255),   // Electric Yellow
-            new Color32(40, 255, 80, 255),   // Neon Green
-            new Color32(175, 40, 255, 255),  // Purple Laser
-            new Color32(255, 125, 0, 255)    // Neon Orange
-        };
-
-        public static readonly Color32[] SunsetPalette = new Color32[]
-        {
-            new Color32(255, 60, 40, 255),   // Fire Red (Flames)
-            new Color32(50, 120, 220, 255),  // Soft Blue
-            new Color32(255, 205, 10, 255),  // Golden Yellow
-            new Color32(25, 30, 65, 255),    // Midnight Navy
-            new Color32(150, 50, 180, 255),  // Sunset Violet
-            new Color32(255, 140, 0, 255)    // Amber Orange
-        };
 
         /// <summary>
         /// Counts total sand grains currently using the specified colorId in the matrix.
